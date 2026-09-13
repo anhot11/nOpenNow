@@ -10,31 +10,41 @@
 
 - 🎮 **Streaming de Ultrabaja Latencia:** Decodificación acelerada por hardware con `MediaCodec` (WebRTC) y transporte nativo **NVST** en Rust (RTSP/SRTP con FEC/NACK).
 - 🖥️ **Instancia de Windows con GPUs RTX:** Ejecución de juegos y aplicaciones de escritorio de Windows en servidores de alta gama.
-- 🦊 **Menú Rápido "Tools" & "Android Browser":** Durante una sesión en streaming, al presionar el botón "Atrás" en tu teléfono, accedes a la sección **Tools > Android Browser**.
-- ⚡ **Lanzamiento Remoto en Windows:** Copia un comando PowerShell corto de una línea o enlace directo para ejecutarlo dentro de la sesión de Windows en GFN, iniciando un navegador optimizado a pantalla completa a 60 FPS.
+- 🦊 **Menú Rápido "Tools":** Durante una sesión en streaming, al presionar el botón "Atrás" en tu teléfono, accedes a la sección **Tools**.
+- 🛡️ **Anti-AFK / Auto-Clicker Inteligente:** Envía micro-señales automáticas periódicas (30s, 45s, 60s, 120s) sin mover el cursor (modo Silencioso) o simulando toques (modo Clic) para evitar que GeForce NOW desconecte la sesión por inactividad.
+- 📱 **Navegador Integrado en la App (In-App Browser):** Abre un navegador web móvil completo (con navegación, recarga y barra de URL) directamente sobre el stream sin salir de la app ni del juego.
+- ⚡ **Lanzador .BAT Híbrido para Windows GFN (Disco `I:\`):** Archivo descargable de un solo doble clic (`nOpenNow-Browser.bat`) que utiliza automáticamente PowerShell 7 de SalsaNOW (`I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe`), crea el perfil en `I:\nOpenNow_Browser` e inicia el navegador a 60 FPS con aceleración de GPU RTX.
 
 ---
 
 ## 📱 Experiencia en la App Android
 
 ```mermaid
-flowchart LR
+flowchart TD
     Stream["🎮 Sesión Activa GFN"] -->|Pulsar Atrás| Menu["📋 Menú Rápido de Controles"]
     Menu -->|Tocar Tools| Tools["🛠️ Sección Tools"]
-    Tools -->|Android Browser| BrowserModal["🌐 Android Browser (Link & PS Command)"]
-    BrowserModal -->|Copiar Comando| Windows["🪟 Instancia Windows (GFN)"]
-    Windows -->|Ejecutar PowerShell| RunningBrowser["🚀 Navegador a 60 FPS con GPU RTX"]
+    
+    Tools -->|Opción 1| AntiAFK["🛡️ Anti-Inactividad / Auto-Clicker\n(Mantiene viva la sesión GFN)"]
+    Tools -->|Opción 2| InAppBrowser["📱 Navegador en la App\n(WebView móvil integrado)"]
+    Tools -->|Opción 3| WinBrowser["🪟 Navegador en Windows GFN\n(Link .BAT en Disco I: con SalsaNOW pwsh)"]
+    
+    WinBrowser -->|Descargar y Doble Clic| RunningBrowser["🚀 Navegador a 60 FPS con GPU RTX"]
 ```
 
-1. **Estando en la transmisión**, pulsa el botón **Atrás** de tu celular.
+1. **Estando en la transmisión**, pulsa el botón **Atrás** de tu celular para abrir el menú rápido.
 2. En la barra de herramientas del panel rápido, pulsa en **Tools**.
-3. Selecciona **Android Browser**.
-4. Verás el comando PowerShell y el enlace directo con un botón para **Copiar al portapapeles**:
-   ```powershell
-   irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex
-   ```
-5. En la máquina virtual de Windows (usando el navegador de Steam `Shift+Tab`, la ayuda de Steam o la terminal), pega y ejecuta el comando.
-6. ¡Listo! El navegador se iniciará maximizado en Windows, aprovechando la GPU RTX de NVIDIA y transmitiéndose directamente a tu teléfono.
+3. Dispones de 3 potentes utilidades:
+   - **Anti-Inactividad / Auto-Clicker**: Activa la protección Anti-AFK y personaliza el intervalo y modo (Silencioso o Clic). Verás un badge visual verde en pantalla indicando que la sesión está protegida.
+   - **Navegador en la App**: Toca "Abrir" para desplegar el navegador web superpuesto sin salir de tu juego.
+   - **Lanzador Windows GFN (.BAT)**: Copia el enlace directo al archivo `.bat`:
+     ```
+     https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat
+     ```
+     o copia el comando de SalsaNOW PowerShell 7:
+     ```powershell
+     "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" -c "irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex"
+     ```
+4. Al hacer doble clic en Windows GFN, se configuran las carpetas en `I:\nOpenNow_Browser` y se lanza el navegador instantáneamente a 60 FPS.
 
 ---
 
