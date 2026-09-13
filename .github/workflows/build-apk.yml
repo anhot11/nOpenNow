@@ -47,23 +47,28 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK
+      - name: Build APKs (Release & Debug)
         working-directory: android
         run: |
-          ./gradlew :app:assembleDebug --stacktrace
+          ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nOpenNow-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: nOpenNow-apks
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
       - name: Publish GitHub Release on Tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/*.apk
+          files: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/debug/*.apk
+            tools/windows/nOpenNow-Browser.bat
           name: nOpenNow Release ${{ github.ref_name }}
           draft: false
           prerelease: false

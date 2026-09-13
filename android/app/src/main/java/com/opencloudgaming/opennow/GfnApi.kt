@@ -1642,6 +1642,13 @@ class GfnAuthRepository(
     }
 
     private fun isLoopbackOAuthRedirect(uri: Uri): Boolean {
+        if (uri.scheme.equals("opennow", ignoreCase = true)) {
+            return uri.host.equals("login", ignoreCase = true) ||
+                uri.host.equals("oauth", ignoreCase = true) ||
+                uri.path?.contains("login", ignoreCase = true) == true ||
+                uri.getQueryParameter("code") != null ||
+                uri.getQueryParameter("error") != null
+        }
         if (uri.scheme != "http") return false
         val host = uri.host?.lowercase(Locale.US) ?: return false
         if (host != "localhost" && host != "127.0.0.1" && host != "::1") return false
@@ -1746,14 +1753,71 @@ class GfnAuthRepository(
 
     private fun writeCallbackResponse(socket: Socket, message: String) {
         val html = """
-            <!doctype html><html><head><meta charset="utf-8"><title>OpenNOW Login</title></head>
-            <body style="font-family:sans-serif;background:#07100b;color:#dfffea;display:grid;place-items:center;height:100vh">
-            <main style="max-width:480px;padding:24px;border:1px solid #245138;border-radius:12px">
-            <h2>OpenNOW Login</h2><p>$message</p>
-            </main></body></html>
+            <!doctype html>
+            <html lang="es">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>OpenNOW Login</title>
+              <style>
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                  background: #07100b;
+                  color: #dfffea;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                  margin: 0;
+                  padding: 20px;
+                  box-sizing: border-box;
+                  text-align: center;
+                }
+                .card {
+                  background: #0f2016;
+                  border: 1px solid #1e4d31;
+                  border-radius: 16px;
+                  padding: 32px 24px;
+                  max-width: 440px;
+                  width: 100%;
+                  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+                }
+                h2 { color: #76b900; margin: 0 0 16px; font-size: 22px; }
+                p { color: #b2d8c3; font-size: 15px; line-height: 1.5; margin: 8px 0; }
+                .btn {
+                  display: inline-block;
+                  margin-top: 20px;
+                  padding: 14px 28px;
+                  background: #76b900;
+                  color: #07100b;
+                  font-weight: 700;
+                  font-size: 16px;
+                  text-decoration: none;
+                  border-radius: 10px;
+                  transition: background 0.2s;
+                }
+                .btn:active { background: #5c9300; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h2>✓ ¡Inicio de sesión completado!</h2>
+                <p>$message</p>
+                <p>Regresando automáticamente a OpenNOW...</p>
+                <a href="opennow://login" class="btn">Volver a OpenNOW</a>
+              </div>
+              <script>
+                setTimeout(function() {
+                  try {
+                    window.location.href = "opennow://login";
+                  } catch (e) {}
+                }, 350);
+              </script>
+            </body>
+            </html>
         """.trimIndent()
-        val bytes = html.toByteArray()
-        val writer = OutputStreamWriter(socket.getOutputStream())
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8)
         writer.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n")
         writer.write(html)
         writer.flush()
