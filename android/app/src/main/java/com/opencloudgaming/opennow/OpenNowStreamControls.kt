@@ -736,6 +736,13 @@ internal fun StreamControlsPanel(
     onBugReportVersionCheck: () -> Unit,
     onOpenUpdate: () -> Unit,
     onButtonTone: () -> Unit,
+    autoClickerEnabled: Boolean = false,
+    onAutoClickerToggle: () -> Unit = {},
+    autoClickerIntervalSeconds: Int = 45,
+    onAutoClickerIntervalChange: (Int) -> Unit = {},
+    autoClickerMode: String = "silent",
+    onAutoClickerModeToggle: () -> Unit = {},
+    onOpenInAppBrowser: () -> Unit = {},
     highlightDone: Boolean = false,
     onClose: () -> Unit,
 ) {
@@ -1165,6 +1172,13 @@ internal fun StreamControlsPanel(
                     }
                 }
                 StreamControlsPage.Tools -> toolsPageItems(
+                    autoClickerEnabled = autoClickerEnabled,
+                    onAutoClickerToggle = onAutoClickerToggle,
+                    autoClickerIntervalSeconds = autoClickerIntervalSeconds,
+                    onAutoClickerIntervalChange = onAutoClickerIntervalChange,
+                    autoClickerMode = autoClickerMode,
+                    onAutoClickerModeToggle = onAutoClickerModeToggle,
+                    onOpenInAppBrowser = onOpenInAppBrowser,
                     onButtonTone = onButtonTone,
                 )
                 StreamControlsPage.Main -> {
@@ -2624,8 +2638,90 @@ private fun LazyListScope.mouseModePageItems(
 }
 
 private fun LazyListScope.toolsPageItems(
+    autoClickerEnabled: Boolean,
+    onAutoClickerToggle: () -> Unit,
+    autoClickerIntervalSeconds: Int,
+    onAutoClickerIntervalChange: (Int) -> Unit,
+    autoClickerMode: String,
+    onAutoClickerModeToggle: () -> Unit,
+    onOpenInAppBrowser: () -> Unit,
     onButtonTone: () -> Unit,
 ) {
+    // 1. Anti-Inactividad / Auto-Clicker
+    item {
+        ControlSection(stringResource(R.string.stream_tools_autoclicker_title)) {
+            Text(
+                text = stringResource(R.string.stream_tools_autoclicker_desc),
+                color = TextMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            ControlSwitchRow(
+                label = stringResource(R.string.stream_tools_autoclicker_toggle),
+                checked = autoClickerEnabled,
+                onCheckedChange = {
+                    onButtonTone()
+                    onAutoClickerToggle()
+                },
+                value = onOffLabel(autoClickerEnabled),
+            )
+            if (autoClickerEnabled) {
+                ControlActionRow(
+                    label = stringResource(R.string.stream_tools_autoclicker_mode),
+                    actionLabel = if (autoClickerMode == "silent") "Silencioso" else "Clic Activo",
+                    onClick = {
+                        onButtonTone()
+                        onAutoClickerModeToggle()
+                    },
+                    value = if (autoClickerMode == "silent") {
+                        stringResource(R.string.stream_tools_autoclicker_mode_silent)
+                    } else {
+                        stringResource(R.string.stream_tools_autoclicker_mode_click)
+                    },
+                    indentLevel = 1,
+                )
+                val nextInterval = when (autoClickerIntervalSeconds) {
+                    30 -> 45
+                    45 -> 60
+                    60 -> 120
+                    else -> 30
+                }
+                ControlActionRow(
+                    label = stringResource(R.string.stream_tools_autoclicker_interval),
+                    actionLabel = "${autoClickerIntervalSeconds}s",
+                    onClick = {
+                        onButtonTone()
+                        onAutoClickerIntervalChange(nextInterval)
+                    },
+                    value = "Enviar señal cada ${autoClickerIntervalSeconds}s",
+                    indentLevel = 1,
+                )
+            }
+        }
+    }
+
+    // 2. Navegador Integrado en la App (In-App Browser)
+    item {
+        ControlSection(stringResource(R.string.stream_tools_inapp_browser_title)) {
+            Text(
+                text = stringResource(R.string.stream_tools_inapp_browser_desc),
+                color = TextMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            ControlActionRow(
+                label = stringResource(R.string.stream_tools_open_inapp_browser),
+                actionLabel = "Abrir",
+                onClick = {
+                    onButtonTone()
+                    onOpenInAppBrowser()
+                },
+                value = "Navegador móvil dentro de OpenNOW",
+            )
+        }
+    }
+
+    // 3. Lanzador Windows GFN (.BAT en Disco I:)
     item {
         ControlSection(stringResource(R.string.stream_tools_section_windows)) {
             Text(

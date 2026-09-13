@@ -42,15 +42,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -196,6 +200,10 @@ internal fun StreamScreen(
     val fallbackSessionStartedAtMs = remember(session?.sessionId) { System.currentTimeMillis() }
     val sessionStartedAtMs = session?.timerStartedAtMs ?: fallbackSessionStartedAtMs
     var timerNowMs by remember(session?.sessionId) { mutableStateOf(System.currentTimeMillis()) }
+    var autoClickerEnabled by rememberSaveable { mutableStateOf(false) }
+    var autoClickerIntervalSeconds by rememberSaveable { mutableStateOf(45) }
+    var autoClickerMode by rememberSaveable { mutableStateOf("silent") }
+    var inAppBrowserOpen by rememberSaveable { mutableStateOf(false) }
     val smartSessionLimit = smartSessionLimitFor(state.subscriptionInfo, state.authSession?.user?.membershipTier)
     val buttonToneEnabled = state.settings.controllerUiSounds
     val stretchToFit = state.settings.stretchStreamToFit
@@ -291,7 +299,7 @@ internal fun StreamScreen(
         }
     }
     val streamOverlayOpen = controlsOpen || exitConfirmOpen || keyboardOpen || streamGuideOpen ||
-        physicalControllerPromptOpen || inputModePromptOpen != null || touchLayoutEditing
+        physicalControllerPromptOpen || inputModePromptOpen != null || touchLayoutEditing || inAppBrowserOpen
     val streamKeyboardImeVisible = keyboardOpen && WindowInsets.ime.getBottom(density) > 0
     val externalMousePointerCaptureActive = shouldEnableExternalMousePointerCapture(
         streamReady = streamReady,
@@ -300,6 +308,7 @@ internal fun StreamScreen(
     )
     val handleStreamBack = {
         when {
+            inAppBrowserOpen -> inAppBrowserOpen = false
             streamGuideOpen && streamGuideStep == StreamGuideStep.OpenControls -> openControlsForGuide()
             streamGuideOpen && streamGuideStep == StreamGuideStep.PressDone && controlsOpen -> {
                 controlsOpen = false
@@ -523,6 +532,23 @@ internal fun StreamScreen(
         }
     }
 
+    // Auto-Clicker / Anti-AFK loop: keeps GFN cloud session alive against idle timeout
+    LaunchedEffect(streamReady, autoClickerEnabled, autoClickerIntervalSeconds, autoClickerMode) {
+        if (!autoClickerEnabled) return@LaunchedEffect
+        while (streamReady && autoClickerEnabled) {
+            delay(autoClickerIntervalSeconds * 1000L)
+            if (streamReady && autoClickerEnabled) {
+                if (autoClickerMode == "click") {
+                    client.sendTouchMouseClick()
+                } else {
+                    client.sendRawMouseMove(1, 0)
+                    delay(20L)
+                    client.sendRawMouseMove(-1, 0)
+                }
+            }
+        }
+    }
+
     // Also gated on nativeTouchActive: dispatchTouch would take the native branch first anyway, but
     // leaving two input modes both flagged "enabled" is how they end up fighting later.
     LaunchedEffect(streamReady, touchInputEnabled, state.settings.androidTouch.mousePad, nativeTouchActive) {
@@ -706,6 +732,33 @@ internal fun StreamScreen(
                     onKeyboardOpen = openStreamKeyboard,
                     modifier = Modifier.align(statsAlignment),
                 )
+            }
+            if (streamReady && autoClickerEnabled && !controlsOpen) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xCC11111B),
+                    border = BorderStroke(1.dp, Color(0x66A6E3A1)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(8.dp),
+                            shape = CircleShape,
+                            color = Color(0xFFA6E3A1),
+                        ) {}
+                        Text(
+                            text = if (autoClickerMode == "silent") "Anti-AFK (${autoClickerIntervalSeconds}s)" else "Auto-Click (${autoClickerIntervalSeconds}s)",
+                            color = Color(0xFFA6E3A1),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
             }
             MobileGyroscopeAim(
                 client = client,
@@ -1176,6 +1229,16 @@ internal fun StreamScreen(
                     onBugReportVersionCheck = viewModel::verifyBugReportVersion,
                     onOpenUpdate = viewModel::performAndroidUpdatePrimaryAction,
                     onButtonTone = playButtonTone,
+                    autoClickerEnabled = autoClickerEnabled,
+                    onAutoClickerToggle = { autoClickerEnabled = !autoClickerEnabled },
+                    autoClickerIntervalSeconds = autoClickerIntervalSeconds,
+                    onAutoClickerIntervalChange = { autoClickerIntervalSeconds = it },
+                    autoClickerMode = autoClickerMode,
+                    onAutoClickerModeToggle = { autoClickerMode = if (autoClickerMode == "silent") "click" else "silent" },
+                    onOpenInAppBrowser = {
+                        controlsOpen = false
+                        inAppBrowserOpen = true
+                    },
                     highlightDone = streamGuideOpen && streamGuideStep == StreamGuideStep.PressDone,
                     onClose = {
                         controlsOpen = false
@@ -1246,6 +1309,11 @@ internal fun StreamScreen(
                         },
                     )
                 }
+            }
+            if (inAppBrowserOpen) {
+                OpenNowInAppBrowserDialog(
+                    onDismissRequest = { inAppBrowserOpen = false },
+                )
             }
         }
     }

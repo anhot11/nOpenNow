@@ -962,5 +962,17 @@
     <string name="stream_tools_copy_powershell">Comando PowerShell 7 (SalsaNOW)</string>
     <string name="stream_tools_copy_url">Enlace Directo Script</string>
     <string name="stream_tools_instructions_title">¿Cómo usarlo en GeForce NOW? (2 pasos)</string>
-    <string name="stream_tools_instructions_body">1. En Windows GFN (navegador de Steam Shift+Tab o navegador web), descarga nOpenNow-Browser.bat desde el enlace.\n2. Haz doble clic en nOpenNow-Browser.bat (usa automáticamente PowerShell 7 de SalsaNOW).\n3. Se creará la carpeta en I:\\nOpenNow_Browser y se iniciará el navegador al instante a 60 FPS.</string>
+    <string name="stream_tools_instructions_body">1. En Windows GFN (navegador de Steam Shift+Tab o navegador web), entra al enlace y descarga nOpenNow-Browser.bat.\n2. Haz doble clic en nOpenNow-Browser.bat (usa automáticamente PowerShell 7 de SalsaNOW).\n3. Se creará la carpeta en I:\\nOpenNow_Browser y se iniciará el navegador al instante a 60 FPS.</string>
+
+    <!-- Auto-Clicker & Anti-AFK -->
+    <string name="stream_tools_autoclicker_title">Anti-Inactividad / Auto-Clicker</string>
+    <string name="stream_tools_autoclicker_desc">Evita que GeForce NOW cierre la sesión por inactividad enviando micro-señales automáticas periódicas.</string>
+    <string name="stream_tools_autoclicker_toggle">Protección Anti-AFK Activa</string>
+    <string name="stream_tools_autoclicker_mode">Modo de Señal</string>
+    <string name="stream_tools_autoclicker_mode_silent">Silencioso (Anti-AFK sin mover cursor)</string>
+    <string name="stream_tools_autoclicker_mode_click">Clic Activo (Auto-Clicker en pantalla)</string>
+    <string name="stream_tools_autoclicker_interval">Intervalo de Señal</string>
+    <string name="stream_tools_inapp_browser_title">Navegador Integrado en la App</string>
+    <string name="stream_tools_inapp_browser_desc">Abre un navegador web móvil dentro de OpenNOW sin salir del juego ni de la app.</string>
+    <string name="stream_tools_open_inapp_browser">Abrir Navegador en la App</string>
 </resources>
