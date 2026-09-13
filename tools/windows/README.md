@@ -10,8 +10,8 @@ En las máquinas virtuales de GeForce NOW, el almacenamiento del usuario y juego
 
 El script **`nOpenNow-Browser.bat`** es un ejecutable híbrido (.bat + PowerShell integrado):
 1. **Detecta el disco `I:\`** y crea automáticamente la carpeta **`I:\nOpenNow_Browser\`** con subdirectorios para perfil, caché y descargas (`I:\nOpenNow_Browser\Profile`, `I:\nOpenNow_Browser\Cache`, `I:\nOpenNow_Browser\Downloads`).
-2. **Localiza el navegador de Windows (Edge o Chrome)** o descarga uno portable independiente dentro de `I:\nOpenNow_Browser\`.
-3. **Lanza el navegador con aceleración GPU RTX completa a 60 FPS**, maximizado y sin diálogos de bienvenida.
+2. **Prioriza Waterfox (SalsaNOW en Disco `I:\`) o instala Brave Portable con bloqueador de anuncios** dentro de `I:\nOpenNow_Browser\Brave`. *(Edge en `C:\` queda terminantemente prohibido para proteger tus datos y evitar anuncios)*.
+3. **Lanza el navegador con aceleración GPU RTX completa a 60 FPS**, maximizado y con perfil persistente en el disco `I:\`.
 
 ---
 
