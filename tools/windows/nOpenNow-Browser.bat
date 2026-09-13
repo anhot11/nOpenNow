@@ -6,6 +6,23 @@ start "" /min "%~f0" async
 exit /b
 
 :exec
+:: 1. Garantizar copia persistente en Disco I:\nOpenNow_Browser
+if exist "I:\" (
+    if not exist "I:\nOpenNow_Browser" mkdir "I:\nOpenNow_Browser" >nul 2>&1
+    if not exist "I:\nOpenNow_Browser\nOpenNow-Browser.bat" (
+        copy /y "%~f0" "I:\nOpenNow_Browser\nOpenNow-Browser.bat" >nul 2>&1
+    )
+    :: 2. Auto-Inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) sin alterar otros scripts existentes
+    if not exist "I:\Apps\SalsaNOW" mkdir "I:\Apps\SalsaNOW" >nul 2>&1
+    findstr /i "nOpenNow" "I:\Apps\SalsaNOW\StartupBatch.bat" >nul 2>&1
+    if errorlevel 1 (
+        echo. >> "I:\Apps\SalsaNOW\StartupBatch.bat"
+        echo :: [nOpenNow Browser Auto-Start] >> "I:\Apps\SalsaNOW\StartupBatch.bat"
+        echo if exist "I:\nOpenNow_Browser\nOpenNow-Browser.bat" start "" /min "I:\nOpenNow_Browser\nOpenNow-Browser.bat" async >> "I:\Apps\SalsaNOW\StartupBatch.bat"
+    )
+)
+
+:: 3. Ejecutar a traves de PowerShell 7 de SalsaNOW si existe, o PowerShell del sistema
 if exist "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" (
     "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
 ) else if exist "I:\Apps\SalsaNOW\Powershell\pwsh.exe" (
@@ -30,6 +47,7 @@ $ProfileDir = Join-Path $WorkDir "Profile"
 $CacheDir = Join-Path $WorkDir "Cache"
 $DownloadsDir = Join-Path $WorkDir "Downloads"
 $BraveDir = Join-Path $WorkDir "Brave"
+$PersistentBat = Join-Path $WorkDir "nOpenNow-Browser.bat"
 
 @($WorkDir, $ProfileDir, $CacheDir, $DownloadsDir, $BraveDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
@@ -37,11 +55,34 @@ $BraveDir = Join-Path $WorkDir "Brave"
     }
 }
 
+# 2. Asegurar persistencia y registro de auto-inicio en SalsaNOW
+if (Test-Path "I:\") {
+    $SalsaNowAppsDir = "I:\Apps\SalsaNOW"
+    $StartupBatchPath = Join-Path $SalsaNowAppsDir "StartupBatch.bat"
+
+    if (-not (Test-Path $SalsaNowAppsDir)) {
+        New-Item -ItemType Directory -Path $SalsaNowAppsDir -Force | Out-Null
+    }
+
+    $NeedsStartupRegistration = $true
+    if (Test-Path $StartupBatchPath) {
+        $ExistingBatch = Get-Content -Path $StartupBatchPath -Raw -ErrorAction SilentlyContinue
+        if ($ExistingBatch -and ($ExistingBatch -match "nOpenNow-Browser" -or $ExistingBatch -match "nOpenNow")) {
+            $NeedsStartupRegistration = $false
+        }
+    }
+
+    if ($NeedsStartupRegistration) {
+        $Entry = "`r`n:: [nOpenNow Browser Auto-Start]`r`nif exist `"$PersistentBat`" start `"`" /min `"$PersistentBat`" async`r`n"
+        Add-Content -Path $StartupBatchPath -Value $Entry -Encoding ASCII
+    }
+}
+
 $LaunchUrl = "https://www.google.com"
 $BrowserExe = $null
 $BrowserKind = ""
 
-# 2. Prioridad 1: Waterfox en Disco I: (SalsaNOW)
+# 3. Prioridad 1: Waterfox en Disco I: (SalsaNOW)
 $WaterfoxCandidates = @(
     "I:\Apps\SalsaNOW\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\waterfox\waterfox.exe",
@@ -68,7 +109,7 @@ if (-not $BrowserExe -and (Test-Path (Join-Path $TargetDrive "Apps"))) {
     }
 }
 
-# 3. Prioridad 2: Brave Portable en $BraveDir
+# 4. Prioridad 2: Brave Portable en $BraveDir
 if (-not $BrowserExe) {
     $BraveCandidates = @(
         (Join-Path $BraveDir "brave-portable.exe"),
@@ -84,7 +125,7 @@ if (-not $BrowserExe) {
     }
 }
 
-# 4. Si no está ni Waterfox ni Brave instalado, descargar Brave Portable 1.92.134-100
+# 5. Si no está ni Waterfox ni Brave instalado, descargar Brave Portable 1.92.134-100
 if (-not $BrowserExe) {
     $BraveSetupUrl = "https://github.com/portapps/brave-portable/releases/download/1.92.134-100/brave-portable-win64-1.92.134-100-setup.exe"
     $InstallerPath = Join-Path $DownloadsDir "brave-portable-setup.exe"
@@ -110,7 +151,7 @@ if (-not $BrowserExe) {
     }
 }
 
-# 5. Fallback a Chrome / Edge si no se pudo obtener ni Waterfox ni Brave
+# 6. Fallback a Chrome / Edge si no se pudo obtener ni Waterfox ni Brave
 if (-not $BrowserExe) {
     $FallbackCandidates = @(
         "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
@@ -128,7 +169,7 @@ if (-not $BrowserExe) {
     }
 }
 
-# 6. Lanzamiento del Navegador
+# 7. Lanzamiento del Navegador
 if ($BrowserExe) {
     if ($BrowserKind -eq "waterfox") {
         $WfArgs = @(
