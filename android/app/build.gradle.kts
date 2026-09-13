@@ -20,8 +20,8 @@ android {
         // Android 17 target changes are audited; LAN access is permission-gated at its feature boundary.
         //noinspection EditedTargetSdkVersion
         targetSdk = 37
-        versionCode = 129
-        versionName = "1.3.6"
+        versionCode = 130
+        versionName = "1.3.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("boolean", "APK_UPDATES_SUPPORTED", "true")

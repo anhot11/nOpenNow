@@ -741,6 +741,7 @@ internal fun StreamControlsPanel(
     autoClickerIntervalSeconds: Int = 45,
     onAutoClickerIntervalChange: (Int) -> Unit = {},
     autoClickerMode: String = "silent",
+    onAutoClickerModeToggle: () -> Unit = {},
     onSendPcCommand: (String) -> Unit = {},
     onOpenKeyboard: () -> Unit = {},
     browserLowQualityEnabled: Boolean = false,

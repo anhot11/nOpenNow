@@ -1247,6 +1247,7 @@ internal fun StreamScreen(
                     autoClickerIntervalSeconds = autoClickerIntervalSeconds,
                     onAutoClickerIntervalChange = { autoClickerIntervalSeconds = it },
                     autoClickerMode = autoClickerMode,
+                    onAutoClickerModeToggle = { autoClickerMode = if (autoClickerMode == "silent") "click" else "silent" },
                     onSendPcCommand = { cmd ->
                         client.syncText(null, cmd)
                         client.sendTextControlKey(KeyEvent.KEYCODE_ENTER)
