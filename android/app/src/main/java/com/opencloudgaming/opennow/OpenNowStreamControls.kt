@@ -1196,6 +1196,27 @@ internal fun StreamControlsPanel(
                 }
             }
             item {
+                ControlSection(stringResource(R.string.stream_panel_section_tools)) {
+                    ControlActionRow(
+                        label = stringResource(R.string.stream_tools_open_inapp_browser),
+                        actionLabel = stringResource(R.string.action_open),
+                        onClick = {
+                            onButtonTone()
+                            onOpenInAppBrowser()
+                        },
+                        value = "Pantalla completa vertical",
+                    )
+                    ControlNavigationRow(
+                        label = stringResource(R.string.stream_tools_title),
+                        onClick = {
+                            onButtonTone()
+                            page = StreamControlsPage.Tools
+                        },
+                        value = stringResource(R.string.stream_tools_browser_value),
+                    )
+                }
+            }
+            item {
                 ControlSection(stringResource(R.string.stream_panel_section_display)) {
                     ControlSwitchRow(
                         label = stringResource(R.string.stream_panel_stretch_to_fit),
@@ -1395,18 +1416,6 @@ internal fun StreamControlsPanel(
                         } else {
                             onOffLabel(false)
                         },
-                    )
-                }
-            }
-            item {
-                ControlSection(stringResource(R.string.stream_panel_section_tools)) {
-                    ControlNavigationRow(
-                        label = stringResource(R.string.stream_tools_browser_label),
-                        onClick = {
-                            onButtonTone()
-                            page = StreamControlsPage.Tools
-                        },
-                        value = stringResource(R.string.stream_tools_browser_value),
                     )
                 }
             }
