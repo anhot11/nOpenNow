@@ -169,17 +169,6 @@ internal fun buildAndroidBugReportRequest(
     val description = report.description.trim()
     androidBugReportTitleError(title)?.let { error -> throw IllegalArgumentException(error) }
     androidBugReportDescriptionError(description)?.let { error -> throw IllegalArgumentException(error) }
-    require(androidAppLocaleIsEnglish(report.appLanguageSelectionTag)) {
-        "Set the OpenNOW or device language to English before sending a bug report"
-    }
-    androidBugReportLanguageError(
-        listOf(
-            AndroidBugReportLanguageCandidate(
-                languageTag = report.languageCheck.languageTag,
-                confidence = report.languageCheck.confidence,
-            ),
-        ),
-    )?.let { error -> throw IllegalArgumentException(error) }
     require(report.versionName.isNotBlank()) { "App version is unavailable" }
     require(report.versionCode.isNotBlank()) { "App build is unavailable" }
     require(report.reporterId.matches(ANDROID_BUG_REPORT_REPORTER_ID_REGEX)) {

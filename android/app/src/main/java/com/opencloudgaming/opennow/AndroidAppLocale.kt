@@ -49,14 +49,10 @@ internal data class AndroidAppLocaleState(
     val deviceLanguageTag: String = effectiveLanguageTag,
 ) {
     val bugReportsAllowed: Boolean
-        get() = androidAppLocaleIsEnglish(selectedLanguageTag) || androidAppLocaleIsEnglish(deviceLanguageTag)
+        get() = true
 
     val bugReportLanguageTag: String?
-        get() = when {
-            androidAppLocaleIsEnglish(selectedLanguageTag) -> selectedLanguageTag
-            androidAppLocaleIsEnglish(deviceLanguageTag) -> deviceLanguageTag
-            else -> null
-        }
+        get() = selectedLanguageTag.ifBlank { deviceLanguageTag }.ifBlank { "es" }
 }
 
 /**

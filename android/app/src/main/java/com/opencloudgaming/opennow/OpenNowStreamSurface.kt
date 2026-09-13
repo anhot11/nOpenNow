@@ -204,6 +204,7 @@ internal fun StreamScreen(
     var autoClickerIntervalSeconds by rememberSaveable { mutableStateOf(45) }
     var autoClickerMode by rememberSaveable { mutableStateOf("silent") }
     var inAppBrowserOpen by rememberSaveable { mutableStateOf(false) }
+    var browserLowQualityEnabled by rememberSaveable { mutableStateOf(true) }
     val smartSessionLimit = smartSessionLimitFor(state.subscriptionInfo, state.authSession?.user?.membershipTier)
     val buttonToneEnabled = state.settings.controllerUiSounds
     val stretchToFit = state.settings.stretchStreamToFit
@@ -546,6 +547,19 @@ internal fun StreamScreen(
                     client.sendRawMouseMove(-1, 0)
                 }
             }
+        }
+    }
+
+    // Modo Browser: cuando el navegador web está activo, reduce la calidad de GFN al mínimo (2 Mbps)
+    LaunchedEffect(inAppBrowserOpen, browserLowQualityEnabled, streamReady) {
+        if (!streamReady) return@LaunchedEffect
+        if (inAppBrowserOpen && browserLowQualityEnabled) {
+            client.updateBitrateLimit(2_000)
+            liveBitrateLimitKbps = 2_000
+        } else if (!inAppBrowserOpen && streamReady) {
+            val normalBitrate = (state.settings.stream.maxBitrateMbps * 1000).coerceAtLeast(5000)
+            client.updateBitrateLimit(normalBitrate)
+            liveBitrateLimitKbps = normalBitrate
         }
     }
 
@@ -1239,6 +1253,10 @@ internal fun StreamScreen(
                         controlsOpen = false
                         inAppBrowserOpen = true
                     },
+                    browserLowQualityEnabled = browserLowQualityEnabled,
+                    onBrowserLowQualityToggle = {
+                        browserLowQualityEnabled = !browserLowQualityEnabled
+                    },
                     highlightDone = streamGuideOpen && streamGuideStep == StreamGuideStep.PressDone,
                     onClose = {
                         controlsOpen = false
@@ -1312,6 +1330,7 @@ internal fun StreamScreen(
             }
             if (inAppBrowserOpen) {
                 OpenNowInAppBrowserDialog(
+                    lowQualityActive = browserLowQualityEnabled,
                     onDismissRequest = { inAppBrowserOpen = false },
                 )
             }

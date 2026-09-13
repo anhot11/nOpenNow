@@ -1074,8 +1074,6 @@ class OpenNowViewModel(application: Application) : AndroidViewModel(application)
             ?: androidBugReportDescriptionError(description)
         val validationError = when {
             versionBlock != null -> versionBlock
-            !appLocale.bugReportsAllowed ->
-                "Set the OpenNOW or device language to English before sending a bug report"
             contentError != null -> contentError
             else -> null
         }

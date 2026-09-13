@@ -36,7 +36,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
-internal const val ANDROID_UPDATE_SOURCE_URL = "https://api.printedwaste.com/releases/opennow/latest"
+internal const val ANDROID_UPDATE_SOURCE_URL = "https://api.github.com/repos/anhot11/nOpenNow/releases/latest"
 internal const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
 internal const val GOOGLE_PLAY_STORE_LISTING_URL = "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}"
 private const val UPDATE_FILE_PROVIDER_AUTHORITY_SUFFIX = ".updates"

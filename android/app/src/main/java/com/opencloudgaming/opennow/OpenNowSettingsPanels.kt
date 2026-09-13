@@ -1369,7 +1369,8 @@ private const val GFN_STORAGE_MANAGEMENT_URL = "https://gfn.link/cloudstorage"
 private const val GFN_STORAGE_RESET_URL = "https://gfn.link/resetstorage"
 private const val GFN_ADD_STORAGE_URL = "https://gfn.link/addstorage"
 private const val GFN_ACCOUNT_HELP_URL = "https://gfn.link/5399"
-private const val OPENNOW_GITHUB_URL = "https://github.com/OpenCloudGaming/OpenNOW"
+private const val OPENNOW_GITHUB_URL = "https://github.com/anhot11/nOpenNow"
+private const val OPENNOW_GITHUB_ISSUES_URL = "https://github.com/anhot11/nOpenNow/issues"
 
 private data class DeveloperCredit(
     val name: String,
@@ -1377,6 +1378,7 @@ private data class DeveloperCredit(
 )
 
 private val DEVELOPER_CREDITS = listOf(
+    DeveloperCredit("anhot11", "https://github.com/anhot11"),
     DeveloperCredit("Kiefer", "https://github.com/Kief5555"),
     DeveloperCredit("Zortos", "https://github.com/zortos293"),
 )
@@ -1621,21 +1623,40 @@ internal fun AppVersionPanel(settings: AppSettings, onSettingsChange: (AppSettin
 internal fun OpenNowGitHubPanel() {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SettingsPanelAlt)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("OpenNOW Repository", color = SettingsText, fontWeight = FontWeight.SemiBold)
-            Text("OpenCloudGaming/OpenNOW", color = SettingsTextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(SettingsPanelAlt)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("nOpenNow Repositorio", color = SettingsText, fontWeight = FontWeight.SemiBold)
+                Text("anhot11/nOpenNow", color = SettingsTextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(onClick = { openExternalUrlOrCopy(context, clipboard, OPENNOW_GITHUB_URL, "GitHub link copied") }) {
+                Text("GitHub", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-        OutlinedButton(onClick = { openExternalUrlOrCopy(context, clipboard, OPENNOW_GITHUB_URL, "GitHub link copied") }) {
-            Text("GitHub", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(SettingsPanelAlt)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Reportar Problema / Error", color = SettingsText, fontWeight = FontWeight.SemiBold)
+                Text("Crea un Issue en GitHub para que podamos solucionarlo", color = SettingsTextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(onClick = { openExternalUrlOrCopy(context, clipboard, OPENNOW_GITHUB_ISSUES_URL, "GitHub Issues link copied") }) {
+                Text("Issues", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

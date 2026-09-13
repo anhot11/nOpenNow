@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -54,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 fun OpenNowInAppBrowserDialog(
     initialUrl: String = "https://www.google.com",
+    lowQualityActive: Boolean = true,
     onDismissRequest: () -> Unit,
 ) {
     var currentUrl by remember { mutableStateOf(initialUrl) }
@@ -152,6 +155,28 @@ fun OpenNowInAppBrowserDialog(
                             painter = painterResource(R.drawable.ic_clear),
                             contentDescription = "Cerrar",
                             tint = Color(0xFFF38BA8)
+                        )
+                    }
+                }
+
+                if (lowQualityActive) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF11111B))
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(6.dp),
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0xFFA6E3A1),
+                        ) {}
+                        Text(
+                            text = "Modo Ahorro Activo: Calidad GFN reducida a 2 Mbps",
+                            color = Color(0xFFA6E3A1),
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }

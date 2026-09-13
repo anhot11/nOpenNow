@@ -975,4 +975,15 @@
     <string name="stream_tools_inapp_browser_title">Navegador Integrado en la App</string>
     <string name="stream_tools_inapp_browser_desc">Abre un navegador web móvil dentro de OpenNOW sin salir del juego ni de la app.</string>
     <string name="stream_tools_open_inapp_browser">Abrir Navegador en la App</string>
+
+    <!-- Modo Browser Calidad Mínima -->
+    <string name="stream_tools_browser_low_quality_label">Calidad Mínima en Navegador</string>
+    <string name="stream_tools_browser_low_quality_on">2 Mbps (Ahorro Máximo 90% datos)</string>
+    <string name="stream_tools_browser_low_quality_off">Calidad Normal de Juego</string>
+
+    <!-- Diagnóstico y Reporte GitHub -->
+    <string name="stream_tools_diagnostics_title">Diagnóstico y Reporte de Errores</string>
+    <string name="stream_tools_diagnostics_desc">Envía o copia el diagnóstico técnico completo de tu dispositivo y sesión a nuestro repositorio de GitHub para resolver cualquier error.</string>
+    <string name="stream_tools_report_github_issue">Reportar en GitHub Issues</string>
+    <string name="stream_tools_copy_diagnostics">Copiar Diagnóstico (Markdown)</string>
 </resources>

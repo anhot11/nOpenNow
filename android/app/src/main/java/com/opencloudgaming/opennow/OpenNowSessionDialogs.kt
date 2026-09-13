@@ -320,7 +320,8 @@ internal fun CompletedSessionBugReportDialog(
     onDismiss: () -> Unit,
 ) {
     val configuration = LocalConfiguration.current
-    val appLocale = currentAndroidAppLocale(LocalContext.current)
+    val context = LocalContext.current
+    val appLocale = currentAndroidAppLocale(context)
     val landscapeLayout = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
@@ -369,7 +370,6 @@ internal fun CompletedSessionBugReportDialog(
                             CopyableBugReportId(reference)
                         }
                     }
-                    !appLocale.bugReportsAllowed -> BugReportLocaleGateCard()
                     !androidBugReportsAllowed(update, versionCheck) -> BugReportVersionGateCard(
                         update = update,
                         versionCheck = versionCheck,
@@ -449,6 +449,37 @@ internal fun CompletedSessionBugReportDialog(
                                 },
                             )
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                                        title = title,
+                                        userDescription = description,
+                                        device = AndroidDeviceDiagnostics.snapshot(context),
+                                    )
+                                    GitHubDiagnosticsReporter.openGitHubIssue(context, title, markdown)
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("GitHub Issues")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                                        title = title,
+                                        userDescription = description,
+                                        device = AndroidDeviceDiagnostics.snapshot(context),
+                                    )
+                                    GitHubDiagnosticsReporter.copyMarkdownToClipboard(context, markdown)
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Copiar Diagnóstico")
+                            }
+                        }
                         submission.error?.let { error ->
                             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }
@@ -468,7 +499,7 @@ internal fun CompletedSessionBugReportDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.bug_report_sending))
                 }
-                appLocale.bugReportsAllowed && androidBugReportsAllowed(update, versionCheck) -> Button(
+                androidBugReportsAllowed(update, versionCheck) -> Button(
                     onClick = { confirmationOpen = true },
                     enabled = androidBugReportTitleError(title) == null &&
                         androidBugReportDescriptionError(description) == null &&

@@ -743,6 +743,8 @@ internal fun StreamControlsPanel(
     autoClickerMode: String = "silent",
     onAutoClickerModeToggle: () -> Unit = {},
     onOpenInAppBrowser: () -> Unit = {},
+    browserLowQualityEnabled: Boolean = true,
+    onBrowserLowQualityToggle: () -> Unit = {},
     highlightDone: Boolean = false,
     onClose: () -> Unit,
 ) {
@@ -1179,6 +1181,8 @@ internal fun StreamControlsPanel(
                     autoClickerMode = autoClickerMode,
                     onAutoClickerModeToggle = onAutoClickerModeToggle,
                     onOpenInAppBrowser = onOpenInAppBrowser,
+                    browserLowQualityEnabled = browserLowQualityEnabled,
+                    onBrowserLowQualityToggle = onBrowserLowQualityToggle,
                     onButtonTone = onButtonTone,
                 )
                 StreamControlsPage.Main -> {
@@ -2191,6 +2195,38 @@ internal fun BugReportFormInputs(
                 )
             }
         }
+        val context = LocalContext.current
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                        title = title,
+                        userDescription = description,
+                        device = AndroidDeviceDiagnostics.snapshot(context),
+                    )
+                    GitHubDiagnosticsReporter.openGitHubIssue(context, title, markdown)
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("GitHub Issues")
+            }
+            OutlinedButton(
+                onClick = {
+                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                        title = title,
+                        userDescription = description,
+                        device = AndroidDeviceDiagnostics.snapshot(context),
+                    )
+                    GitHubDiagnosticsReporter.copyMarkdownToClipboard(context, markdown)
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Copiar Info")
+            }
+        }
         Button(
             onClick = onConfirm,
             enabled = titleError == null &&
@@ -2367,11 +2403,6 @@ private fun StreamBugReporter(
                     }
                 }
             }
-            return@ControlSection
-        }
-
-        if (!appLocale.bugReportsAllowed) {
-            BugReportLocaleGateCard()
             return@ControlSection
         }
 
@@ -2645,6 +2676,8 @@ private fun LazyListScope.toolsPageItems(
     autoClickerMode: String,
     onAutoClickerModeToggle: () -> Unit,
     onOpenInAppBrowser: () -> Unit,
+    browserLowQualityEnabled: Boolean = true,
+    onBrowserLowQualityToggle: () -> Unit = {},
     onButtonTone: () -> Unit,
 ) {
     // 1. Anti-Inactividad / Auto-Clicker
@@ -2718,6 +2751,19 @@ private fun LazyListScope.toolsPageItems(
                 },
                 value = "Navegador móvil dentro de OpenNOW",
             )
+            ControlSwitchRow(
+                label = stringResource(R.string.stream_tools_browser_low_quality_label),
+                checked = browserLowQualityEnabled,
+                onCheckedChange = {
+                    onButtonTone()
+                    onBrowserLowQualityToggle()
+                },
+                value = if (browserLowQualityEnabled) {
+                    stringResource(R.string.stream_tools_browser_low_quality_on)
+                } else {
+                    stringResource(R.string.stream_tools_browser_low_quality_off)
+                },
+            )
         }
     }
 
@@ -2771,6 +2817,47 @@ private fun LazyListScope.toolsPageItems(
                 color = TextMuted,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+        }
+    }
+
+    // 4. Diagnóstico y Reporte de Errores a GitHub
+    item {
+        val context = LocalContext.current
+        ControlSection(stringResource(R.string.stream_tools_diagnostics_title)) {
+            Text(
+                text = stringResource(R.string.stream_tools_diagnostics_desc),
+                color = TextMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            ControlActionRow(
+                label = stringResource(R.string.stream_tools_report_github_issue),
+                actionLabel = "Reportar",
+                onClick = {
+                    onButtonTone()
+                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                        title = "Reporte de Sesión en Streaming - nOpenNow",
+                        userDescription = "Reporte enviado desde el menú Tools durante la sesión.",
+                        device = AndroidDeviceDiagnostics.snapshot(context),
+                    )
+                    GitHubDiagnosticsReporter.openGitHubIssue(context, "Reporte de Sesión en Streaming", markdown)
+                },
+                value = "anhot11/nOpenNow/issues",
+            )
+            ControlActionRow(
+                label = stringResource(R.string.stream_tools_copy_diagnostics),
+                actionLabel = "Copiar",
+                onClick = {
+                    onButtonTone()
+                    val markdown = GitHubDiagnosticsReporter.buildIssueMarkdown(
+                        title = "Diagnóstico nOpenNow",
+                        userDescription = "Diagnóstico copiado desde el menú Tools.",
+                        device = AndroidDeviceDiagnostics.snapshot(context),
+                    )
+                    GitHubDiagnosticsReporter.copyMarkdownToClipboard(context, markdown)
+                },
+                value = "Portapapeles (Markdown)",
             )
         }
     }
