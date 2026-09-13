@@ -957,12 +957,12 @@
     <string name="stream_tools_browser_label">Android Browser</string>
     <string name="stream_tools_browser_value">Lanzador .BAT (Disco I:)</string>
     <string name="stream_tools_section_windows">Lanzador de Navegador (.BAT)</string>
-    <string name="stream_tools_browser_desc">Descarga y ejecuta el archivo ejecutable .bat en Windows. Creará automáticamente la carpeta en el disco I:\\nOpenNow_Browser y abrirá el navegador a pantalla completa a 60 FPS con GPU RTX.</string>
+    <string name="stream_tools_browser_desc">Ejecuta en Windows Waterfox (SalsaNOW Disco I:) o Brave Portable v1.92.134-100 en I:\\nOpenNow_Browser\\Brave con aceleración GPU RTX. Si prefieres navegar sólo desde el celular sin abrir ventanas en la PC, usa la sección superior \'Navegador Integrado en la App\'.</string>
     <string name="stream_tools_copy_bat">Descargar Lanzador .BAT</string>
     <string name="stream_tools_copy_powershell">Comando PowerShell 7 (SalsaNOW)</string>
     <string name="stream_tools_copy_url">Enlace Directo Script</string>
-    <string name="stream_tools_instructions_title">¿Cómo usarlo en GeForce NOW? (2 pasos)</string>
-    <string name="stream_tools_instructions_body">1. En Windows GFN (navegador de Steam Shift+Tab o navegador web), entra al enlace y descarga nOpenNow-Browser.bat.\n2. Haz doble clic en nOpenNow-Browser.bat (usa automáticamente PowerShell 7 de SalsaNOW).\n3. Se creará la carpeta en I:\\nOpenNow_Browser y se iniciará el navegador al instante a 60 FPS.</string>
+    <string name="stream_tools_instructions_title">¿Cómo usarlo en Windows GeForce NOW?</string>
+    <string name="stream_tools_instructions_body">1. Descarga y ejecuta nOpenNow-Browser.bat en Windows GFN.\n2. Abrirá automáticamente Waterfox de SalsaNOW (I:\\Apps\\SalsaNOW) o descargará Brave Portable a I:\\nOpenNow_Browser\\Brave.\n3. La consola de comandos se cerrará sola tras iniciar el navegador.\nTip: Para navegar desde tu celular sin ventana en la PC, abre el \'Navegador Integrado en la App\' arriba.</string>
 
     <!-- Auto-Clicker & Anti-AFK -->
     <string name="stream_tools_autoclicker_title">Anti-Inactividad / Auto-Clicker</string>
