@@ -1,31 +1,31 @@
 # 🪟 nOpenNow — Herramientas para Windows (GeForce NOW)
 
-Este módulo contiene scripts diseñados para ejecutarse **dentro de las instancias virtuales de Windows en NVIDIA GeForce NOW**.
+Lanzador de navegador web de escritorio optimizado para ejecutarse en la instancia de Windows de NVIDIA GeForce NOW, con almacenamiento directo en el **disco `I:\`**.
 
 ---
 
-## 🎯 ¿Para qué sirve?
-A diferencia de un VPS Linux tradicional, **GeForce NOW** ejecuta instancias de Windows de alto rendimiento con GPUs NVIDIA RTX y red de bajísima latencia. 
+## 🎯 ¿Cómo funciona?
 
-Mediante estos scripts, puedes ejecutar un navegador web completo (Edge, Chrome o portable) directamente en el escritorio de Windows de GeForce NOW y controlarlo desde la aplicación móvil **nOpenNow** en Android.
+En las máquinas virtuales de GeForce NOW, el almacenamiento del usuario y juegos se encuentra en la unidad **`I:\`**.
 
----
-
-## 🚀 Cómo ejecutarlo en la instancia de Windows (en 3 pasos)
-
-1. **Abre la sesión en GeForce NOW desde nOpenNow en tu celular.**
-2. **Accede a la interfaz de Windows:**
-   - Si iniciaste un juego en Steam, presiona `Shift + Tab` (o abre el menú de Steam en pantalla) y selecciona el **Navegador web de Steam**.
-   - O abre cualquier ventana con enlace web o diálogo de ejecución (`Win + R`).
-3. **Ejecuta el siguiente comando en PowerShell:**
-   ```powershell
-   irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex
-   ```
-   *(O descarga y ejecuta `launch-browser.bat`).*
+El script **`nOpenNow-Browser.bat`** es un ejecutable híbrido (.bat + PowerShell integrado):
+1. **Detecta el disco `I:\`** y crea automáticamente la carpeta **`I:\nOpenNow_Browser\`** con subdirectorios para perfil, caché y descargas (`I:\nOpenNow_Browser\Profile`, `I:\nOpenNow_Browser\Cache`, `I:\nOpenNow_Browser\Downloads`).
+2. **Localiza el navegador de Windows (Edge o Chrome)** o descarga uno portable independiente dentro de `I:\nOpenNow_Browser\`.
+3. **Lanza el navegador con aceleración GPU RTX completa a 60 FPS**, maximizado y sin diálogos de bienvenida.
 
 ---
 
-## ⚙️ Características del Lanzador
-- **Cero Privilegios de Admin:** No requiere permisos de administrador; todo se ejecuta en `%TEMP%`.
-- **Aceleración GPU RTX Forzada:** Configura flags para renderizado por hardware, cero copias de texturas y 60 FPS nativos.
-- **Perfil Aislado:** Evita bloqueos de sesión y no deja rastros en la máquina virtual.
+## 📥 Enlace de Descarga Directa
+
+Puedes descargar el archivo `.bat` directamente en la instancia de Windows con este enlace:
+
+👉 **[Descargar nOpenNow-Browser.bat](https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat)**
+
+---
+
+## 🚀 Instrucciones (2 clics)
+
+1. En la sesión de Windows en GFN, abre el navegador de Steam (`Shift + Tab`) o un navegador existente.
+2. Descarga `nOpenNow-Browser.bat` desde el enlace.
+3. **Haz doble clic en `nOpenNow-Browser.bat`.**
+4. Todo se creará en el disco `I:\` y el navegador se abrirá al instante en pantalla completa.

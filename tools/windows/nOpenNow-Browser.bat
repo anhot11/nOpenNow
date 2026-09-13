@@ -1,12 +1,22 @@
-<#
-.SYNOPSIS
-  nOpenNow - Windows Cloud Browser Launcher for GeForce NOW
-  Ejecuta un navegador de escritorio optimizado para streaming en instancias de Windows de GFN.
+<# :
+@echo off
+title nOpenNow - Windows Browser Launcher
+color 0b
+echo ==========================================================
+echo    nOpenNow - Windows Cloud Browser Launcher (GFN)
+echo ==========================================================
+echo.
+echo [1/3] Iniciando entorno en disco I:...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+if %ERRORLEVEL% NEQ 0 (
+    echo [!] Hubo un error al ejecutar PowerShell.
+    pause
+)
+exit /b
 #>
 
 $ErrorActionPreference = "SilentlyContinue"
 
-Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   nOpenNow — Remote Windows Cloud Browser for GFN        " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan

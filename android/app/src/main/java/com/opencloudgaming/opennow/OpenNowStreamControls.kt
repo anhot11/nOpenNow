@@ -2638,34 +2638,34 @@ private fun LazyListScope.toolsPageItems(
     }
     item {
         val clipboard = LocalClipboardManager.current
+        var copiedBat by remember { mutableStateOf(false) }
+        val batUrl = "https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat"
+
+        ControlActionRow(
+            label = stringResource(R.string.stream_tools_copy_bat),
+            actionLabel = if (copiedBat) "¡Copiado!" else "Copiar Link",
+            onClick = {
+                onButtonTone()
+                clipboard.setText(AnnotatedString(batUrl))
+                copiedBat = true
+            },
+            value = batUrl,
+        )
+    }
+    item {
+        val clipboard = LocalClipboardManager.current
         var copiedCommand by remember { mutableStateOf(false) }
-        val psCommand = "irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex"
+        val psCommand = "irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat | iex"
 
         ControlActionRow(
             label = stringResource(R.string.stream_tools_copy_powershell),
-            actionLabel = if (copiedCommand) "Copiado!" else "Copiar",
+            actionLabel = if (copiedCommand) "¡Copiado!" else "Copiar",
             onClick = {
                 onButtonTone()
                 clipboard.setText(AnnotatedString(psCommand))
                 copiedCommand = true
             },
             value = psCommand,
-        )
-    }
-    item {
-        val clipboard = LocalClipboardManager.current
-        var copiedUrl by remember { mutableStateOf(false) }
-        val scriptUrl = "https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1"
-
-        ControlActionRow(
-            label = stringResource(R.string.stream_tools_copy_url),
-            actionLabel = if (copiedUrl) "Copiado!" else "Copiar",
-            onClick = {
-                onButtonTone()
-                clipboard.setText(AnnotatedString(scriptUrl))
-                copiedUrl = true
-            },
-            value = scriptUrl,
         )
     }
     item {
