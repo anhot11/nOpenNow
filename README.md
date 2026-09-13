@@ -13,6 +13,8 @@
 - 🦊 **Menú Rápido "Tools":** Durante una sesión en streaming, al presionar el botón "Atrás" en tu teléfono, accedes a la sección **Tools**.
 - 🛡️ **Anti-AFK / Auto-Clicker Inteligente:** Envía micro-señales automáticas periódicas (30s, 45s, 60s, 120s) sin mover el cursor (modo Silencioso) o simulando toques (modo Clic) para evitar que GeForce NOW desconecte la sesión por inactividad.
 - 📱 **Navegador Integrado en la App (In-App Browser):** Abre un navegador web móvil completo (con navegación, recarga y barra de URL) directamente sobre el stream sin salir de la app ni del juego.
+- 📉 **Modo Ahorro en Navegador (2 Mbps):** Al abrir el navegador dentro del juego, reduce el bitrate de GeForce NOW automáticamente a 2 Mbps, ahorrando hasta un 90% de datos y batería mientras mantienes viva tu sesión. Al cerrarlo, restaura la calidad de juego al instante.
+- 🩺 **Diagnóstico y Reportes directos a GitHub Issues:** Integrado con [GitHub Issues de nOpenNow](https://github.com/anhot11/nOpenNow/issues). Recopila telemetría de red, stream y dispositivo, y crea el issue preformateado en Markdown con 1 solo toque (disponible en español y sin restricciones de idioma del sistema).
 - ⚡ **Lanzador .BAT Híbrido para Windows GFN (Disco `I:\`):** Archivo descargable de un solo doble clic (`nOpenNow-Browser.bat`) que utiliza automáticamente PowerShell 7 de SalsaNOW (`I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe`), crea el perfil en `I:\nOpenNow_Browser` e inicia el navegador a 60 FPS con aceleración de GPU RTX.
 
 ---
@@ -61,4 +63,5 @@ flowchart TD
 > [!IMPORTANT]
 > Para no saturar la CPU ni agotar la memoria RAM de dispositivos móviles, **la compilación de la APK se realiza 100% en la nube mediante GitHub Actions**.
 
-Al realizar un push o crear un tag (`v*`), el workflow compila automáticamente la aplicación y genera la APK lista para instalar.
+- 📥 **Descarga el APK Oficial**: [**nOpenNow v1.1.0 Release**](https://github.com/anhot11/nOpenNow/releases/tag/v1.1.0)
+- ⚙️ **Actualizaciones Automáticas**: La aplicación incluye actualizador automático integrado conectado con los releases de GitHub.
