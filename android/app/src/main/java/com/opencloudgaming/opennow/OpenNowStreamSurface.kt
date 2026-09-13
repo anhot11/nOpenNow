@@ -187,6 +187,12 @@ internal fun StreamScreen(
         preferVirtualController = preferVirtualController,
         preferKeyboardMouse = streamInputMode == StreamInputMode.KeyboardMouse,
     )
+    var inAppBrowserOpen by rememberSaveable { mutableStateOf(false) }
+    var browserLowQualityEnabled by rememberSaveable { mutableStateOf(true) }
+    var autoClickerEnabled by rememberSaveable { mutableStateOf(false) }
+    var autoClickerIntervalSeconds by rememberSaveable { mutableStateOf(45) }
+    var autoClickerMode by rememberSaveable { mutableStateOf("silent") }
+
     val touchControlsVisible = shouldShowAndroidTouchControls(
         tvProfile = tvProfile,
         touchInputEnabled = touchInputEnabled,
@@ -194,17 +200,12 @@ internal fun StreamScreen(
         suppressedByPhysicalController = touchControlsSuppressedByPhysicalController,
         physicalMouseConnected = physicalMouseConnected,
         allowWithPhysicalMouse = showTouchControlsWithPhysicalMouse,
-    ) && !nativeTouchActive
+    ) && !nativeTouchActive && !inAppBrowserOpen
     val touchMouseActive =
-        streamReady && touchInputEnabled && state.settings.androidTouch.mousePad && !nativeTouchActive
+        streamReady && touchInputEnabled && state.settings.androidTouch.mousePad && !nativeTouchActive && !inAppBrowserOpen
     val fallbackSessionStartedAtMs = remember(session?.sessionId) { System.currentTimeMillis() }
     val sessionStartedAtMs = session?.timerStartedAtMs ?: fallbackSessionStartedAtMs
     var timerNowMs by remember(session?.sessionId) { mutableStateOf(System.currentTimeMillis()) }
-    var autoClickerEnabled by rememberSaveable { mutableStateOf(false) }
-    var autoClickerIntervalSeconds by rememberSaveable { mutableStateOf(45) }
-    var autoClickerMode by rememberSaveable { mutableStateOf("silent") }
-    var inAppBrowserOpen by rememberSaveable { mutableStateOf(false) }
-    var browserLowQualityEnabled by rememberSaveable { mutableStateOf(true) }
     val smartSessionLimit = smartSessionLimitFor(state.subscriptionInfo, state.authSession?.user?.membershipTier)
     val buttonToneEnabled = state.settings.controllerUiSounds
     val stretchToFit = state.settings.stretchStreamToFit
