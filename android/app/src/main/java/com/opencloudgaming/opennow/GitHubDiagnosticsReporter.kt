@@ -12,7 +12,7 @@ import java.net.URLEncoder
  * Generates structured GitHub Issue reports and diagnostics for the nOpenNow repository:
  * https://github.com/anhot11/nOpenNow/issues
  */
-object GitHubDiagnosticsReporter {
+internal object GitHubDiagnosticsReporter {
     const val GITHUB_REPO_URL = "https://github.com/anhot11/nOpenNow"
     const val GITHUB_ISSUES_NEW_URL = "https://github.com/anhot11/nOpenNow/issues/new"
 
