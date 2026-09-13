@@ -24,11 +24,11 @@
 - 🖥️ **Instancia de Windows con GPUs RTX:** Ejecución de juegos y aplicaciones de escritorio de Windows en servidores de alta gama.
 - 🦊 **Menú Rápido "Tools":** Durante una sesión en streaming, al presionar el botón "Atrás" en tu teléfono, accedes inmediatamente a la sección **Tools** en primer lugar.
 - 🛡️ **Anti-AFK / Auto-Clicker Inteligente:** Envía micro-señales automáticas periódicas (30s, 45s, 60s, 120s) sin mover el cursor (modo Silencioso) o simulando toques (modo Clic) para evitar que GeForce NOW desconecte la sesión por inactividad.
-- 📱 **Navegador Móvil Integrado (In-App Browser):** Abre un navegador web vertical a pantalla completa con botón 'X' de cierre rápido y controles táctiles ocultos automáticamente para máxima inmersión.
-- 📥 **Administrador de Descargas Integrado:** Interfaz dual con gestor de descargas para abrir archivos directamente en Windows GFN (`🚀 Abrir en PC`) o en el móvil (`📱 Celular`).
-- 📉 **Modo Ahorro en Navegador (2 Mbps):** Al abrir el navegador dentro del juego, reduce el bitrate de GeForce NOW automáticamente a 2 Mbps, ahorrando hasta un 90% de datos y batería mientras mantienes viva tu sesión. Al cerrarlo, restaura la calidad de juego al instante.
-- 🩺 **Diagnóstico y Reportes directos a GitHub Issues:** Integrado con [GitHub Issues de new OpenNow](https://github.com/anhot11/nOpenNow/issues). Recopila telemetría de red, stream y dispositivo, y crea el issue preformateado en Markdown con 1 solo toque (disponible en español y sin restricciones de idioma del sistema).
-- ⚡ **Lanzador .BAT Híbrido para Windows GFN (Disco `I:\`):** Archivo descargable de un solo doble clic (`nOpenNow-Browser.bat`) que utiliza automáticamente PowerShell 7 de SalsaNOW (`I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe`), crea el perfil en `I:\nOpenNow_Browser` e inicia el navegador a 60 FPS con aceleración de GPU RTX.
+- 🌐 **Navegador Cloud 100% en la VM (GeForce NOW):** El navegador (Waterfox de SalsaNOW o Brave Portable) se ejecuta en la máquina virtual en la nube (Disco `I:\`). Todo el tráfico web, descargas y privacidad permanecen en el datacenter de GeForce NOW, protegiendo tu identidad y aprovechando la velocidad gigabit.
+- 📉 **Modo Ahorro en Navegación (2 Mbps):** Al navegar en la VM, reduce el bitrate de GeForce NOW automáticamente a 2 Mbps, ahorrando hasta un 90% de datos y batería mientras mantienes viva tu sesión.
+- ⌨️ **Control Remoto desde la App:** Inicia el navegador en la PC con 1 toque, abre el teclado virtual para escribir en Windows, controla el puntero con Ratón Táctil y envía URLs directas a la máquina virtual.
+- 🩺 **Diagnóstico y Reportes directos a GitHub Issues:** Integrado con [GitHub Issues de new OpenNow](https://github.com/anhot11/nOpenNow/issues). Recopila telemetría de red, stream y dispositivo, y crea el issue preformateado en Markdown con 1 solo toque.
+- ⚡ **Lanzador .BAT para Windows GFN (Disco `I:\`):** Archivo descargable (`nOpenNow-Browser.bat`) que elimina y bloquea activamente Microsoft Edge, utiliza PowerShell 7 de SalsaNOW, crea el perfil en `I:\nOpenNow_Browser` e inicia el navegador con aceleración de GPU RTX.
 
 ---
 
@@ -36,24 +36,23 @@
 
 ```mermaid
 flowchart TD
-    Stream["🎮 Sesión Activa GFN"] -->|Pulsar Atrás| Menu["📋 Menú Rápido de Controles"]
+    Stream["🎮 Sesión Activa GFN (Windows VM)"] -->|Pulsar Atrás| Menu["📋 Menú Rápido de Controles"]
     Menu -->|Tocar Tools| Tools["🛠️ Sección Tools"]
     
-    Tools -->|Opción 1| AntiAFK["🛡️ Anti-Inactividad / Auto-Clicker\n(Mantiene viva la sesión GFN)"]
-    Tools -->|Opción 2| InAppBrowser["📱 Navegador en la App\n(WebView móvil vertical pantalla completa)"]
-    Tools -->|Opción 3| Downloads["📥 Administrador de Descargas\n(Abrir en PC GFN o en Celular)"]
-    Tools -->|Opción 4| WinBrowser["🪟 Navegador en Windows GFN\n(Link .BAT en Disco I: con SalsaNOW pwsh)"]
-    
-    WinBrowser -->|Descargar y Doble Clic| RunningBrowser["🚀 Navegador a 60 FPS con GPU RTX"]
+    Tools -->|Opción 1| WinBrowser["🌐 Iniciar Navegador Cloud en la VM\n(Waterfox / Brave en Disco I: con GPU RTX)"]
+    Tools -->|Opción 2| RemoteKeyboard["⌨️ Teclado y Ratón Remoto\n(Escribir y navegar cómodamente en la PC)"]
+    Tools -->|Opción 3| DataSaver["📉 Modo Ahorro de Datos (2 Mbps)\n(Máximo ahorro navegando en la VM)"]
+    Tools -->|Opción 4| AntiAFK["🛡️ Anti-Inactividad / Auto-Clicker\n(Mantiene viva la sesión GFN)"]
 ```
 
 1. **Estando en la transmisión**, pulsa el botón **Atrás** de tu celular para abrir el menú rápido.
 2. En la barra de herramientas del panel rápido, pulsa en **Tools** (ubicado al inicio del menú).
-3. Dispones de utilidades integradas:
-   - **Anti-Inactividad / Auto-Clicker**: Activa la protección Anti-AFK y personaliza el intervalo y modo (Silencioso o Clic).
-   - **Navegador en la App**: Despliega el navegador web superpuesto vertical en pantalla completa sin salir del juego.
-   - **Administrador de Descargas**: Pestaña dedicada con enlaces rápidos y botón "🚀 Abrir en PC" para ejecutar programas descargados directamente en la instancia de Windows.
-   - **Lanzador Windows GFN (.BAT)**: Descarga directa del archivo `.bat` ejecutable:
+3. Dispones de utilidades integradas para controlar la máquina virtual:
+   - **Iniciar Navegador en la VM**: Envía la señal para abrir Waterfox o Brave en Disco `I:\` inmediatamente.
+   - **Teclado Remoto**: Escribe en las barras de búsqueda y formularios del navegador de Windows.
+   - **Ahorro de Datos (2 Mbps)**: Reduce el consumo de datos de la transmisión a 2 Mbps mientras navegas.
+   - **Anti-Inactividad / Auto-Clicker**: Activa la protección Anti-AFK con intervalo personalizado.
+   - **Lanzador Windows GFN (.BAT)**: Enlace de descarga directa del script:
      ```
      https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat
      ```

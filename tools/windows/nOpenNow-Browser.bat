@@ -1,8 +1,13 @@
 <# :
 @echo off
-title nOpenNow Browser Launcher
+setlocal
+title nOpenNow Cloud Browser Launcher
 
-:: Soporte para abrir archivos directamente fuera del navegador (ej. nOpenNow-Browser.bat open "programa.exe")
+:: 1. Matar inmediatamente cualquier proceso de Microsoft Edge o WebView2 del sistema
+taskkill /F /IM msedge.exe >nul 2>&1
+taskkill /F /IM msedgewebview2.exe >nul 2>&1
+
+:: 2. Soporte para abrir descargas fuera del navegador (ej: nOpenNow-Browser.bat open "setup.exe")
 if /i "%1"=="open" (
     if "%~2"=="" (
         start "" "I:\nOpenNow_Browser\Downloads"
@@ -16,19 +21,15 @@ if /i "%1"=="open" (
     exit /b
 )
 
-if "%1"=="async" goto :exec
-start "" /min "%~f0" async
-exit /b
-
-:exec
-:: 1. Garantizar copia persistente y actualizada en Disco I:\nOpenNow_Browser
+:: 3. Garantizar directorios persistentes y auto-actualizacion en Disco I:\nOpenNow_Browser
 if exist "I:\" (
     if not exist "I:\nOpenNow_Browser" mkdir "I:\nOpenNow_Browser" >nul 2>&1
-    :: Si se ejecuta desde otra ruta (ej. Descargas), actualizar la copia en I:\nOpenNow_Browser
+    if not exist "I:\nOpenNow_Browser\Downloads" mkdir "I:\nOpenNow_Browser\Downloads" >nul 2>&1
+    :: Forzar siempre actualizacion de la copia persistente con esta nueva version
     if /i not "%~f0"=="I:\nOpenNow_Browser\nOpenNow-Browser.bat" (
         copy /y "%~f0" "I:\nOpenNow_Browser\nOpenNow-Browser.bat" >nul 2>&1
     )
-    :: 2. Auto-Inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) de forma segura y no bloqueante
+    :: Registrar auto-inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) de forma limpia
     if not exist "I:\Apps\SalsaNOW" mkdir "I:\Apps\SalsaNOW" >nul 2>&1
     if exist "I:\Apps\SalsaNOW\StartupBatch.bat" (
         findstr /i "nOpenNow" "I:\Apps\SalsaNOW\StartupBatch.bat" >nul 2>&1
@@ -43,26 +44,38 @@ if exist "I:\" (
     )
 )
 
-:: 3. Ejecutar a traves de PowerShell 7 de SalsaNOW (I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe)
+:: 4. Seleccionar interprete de PowerShell (prioridad PowerShell 7 de SalsaNOW)
+set "PWSH_BIN="
 if exist "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" (
-    "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+    set "PWSH_BIN=I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe"
 ) else if exist "I:\Apps\SalsaNOW\Powershell\pwsh.exe" (
-    "I:\Apps\SalsaNOW\Powershell\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+    set "PWSH_BIN=I:\Apps\SalsaNOW\Powershell\pwsh.exe"
 ) else (
     where pwsh >nul 2>nul
     if %ERRORLEVEL% EQU 0 (
-        pwsh -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+        set "PWSH_BIN=pwsh"
     ) else (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+        set "PWSH_BIN=powershell"
     )
 )
+
+:: 5. Ejecutar payload de PowerShell extrayendo codigo limpio
+"%PWSH_BIN%" -NoProfile -ExecutionPolicy Bypass -Command "$txt=[System.IO.File]::ReadAllText('%~f0'); $code=$txt.Substring($txt.IndexOf('#'+'>')+2); Invoke-Expression $code"
 exit /b
 #>
 
 $ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = 'SilentlyContinue'
 
-# 1. Configurar ruta de trabajo en Disco I: (con respaldo a D: o unidad del sistema)
+# Matar activamente cualquier instancia de Edge
+Get-Process -Name "msedge", "msedgewebview2" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "   nOpenNow — Remote Cloud Browser for GeForce NOW        " -ForegroundColor Yellow
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# 1. Configurar rutas de trabajo en Disco I: (con respaldo a D: o SystemDrive)
 $TargetDrive = if (Test-Path "I:\") { "I:\" } elseif (Test-Path "D:\") { "D:\" } else { "$env:SystemDrive\" }
 $WorkDir = Join-Path $TargetDrive "nOpenNow_Browser"
 $ProfileDir = Join-Path $WorkDir "Profile"
@@ -70,6 +83,7 @@ $CacheDir = Join-Path $WorkDir "Cache"
 $DownloadsDir = Join-Path $WorkDir "Downloads"
 $BraveDir = Join-Path $WorkDir "Brave"
 $PersistentBat = Join-Path $WorkDir "nOpenNow-Browser.bat"
+$PersistentPs1 = Join-Path $WorkDir "browser.ps1"
 
 @($WorkDir, $ProfileDir, $CacheDir, $DownloadsDir, $BraveDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
@@ -77,35 +91,11 @@ $PersistentBat = Join-Path $WorkDir "nOpenNow-Browser.bat"
     }
 }
 
-# 2. Asegurar persistencia y actualizar auto-inicio en SalsaNOW
-if (Test-Path "I:\") {
-    $SalsaNowAppsDir = "I:\Apps\SalsaNOW"
-    $StartupBatchPath = Join-Path $SalsaNowAppsDir "StartupBatch.bat"
+Write-Host "[*] Unidad de almacenamiento: $TargetDrive" -ForegroundColor Gray
+Write-Host "[+] Directorio persistente: $WorkDir" -ForegroundColor Green
+Write-Host "[+] Directorio de descargas: $DownloadsDir" -ForegroundColor Green
 
-    if (-not (Test-Path $SalsaNowAppsDir)) {
-        New-Item -ItemType Directory -Path $SalsaNowAppsDir -Force | Out-Null
-    }
-
-    $NeedsStartupRegistration = $true
-    if (Test-Path $StartupBatchPath) {
-        $ExistingBatch = Get-Content -Path $StartupBatchPath -Raw -ErrorAction SilentlyContinue
-        if ($ExistingBatch -and ($ExistingBatch -match "nOpenNow-Browser" -or $ExistingBatch -match "nOpenNow")) {
-            $NeedsStartupRegistration = $false
-            # Si existía una versión anterior que no incluía 'async' (bloqueante), actualizarla a la versión no bloqueante
-            if ($ExistingBatch -notmatch "async") {
-                $UpdatedBatch = $ExistingBatch -replace '(?i)(.*nOpenNow-Browser.*)', 'if exist "I:\nOpenNow_Browser\nOpenNow-Browser.bat" start "" /min "I:\nOpenNow_Browser\nOpenNow-Browser.bat" async'
-                Set-Content -Path $StartupBatchPath -Value $UpdatedBatch -Encoding ASCII -Force
-            }
-        }
-    }
-
-    if ($NeedsStartupRegistration) {
-        $Entry = "`r`n:: [nOpenNow Browser Auto-Start]`r`nif exist `"$PersistentBat`" start `"`" /min `"$PersistentBat`" async`r`n"
-        Add-Content -Path $StartupBatchPath -Value $Entry -Encoding ASCII
-    }
-}
-
-# 3. Crear o actualizar lanzador externo de programas (AbrirPrograma.bat)
+# 2. Crear lanzadores de programas externos (AbrirPrograma.bat y OpenProgram.bat)
 $RunnerBat = Join-Path $WorkDir "AbrirPrograma.bat"
 $RunnerContent = @"
 @echo off
@@ -131,11 +121,14 @@ $LaunchUrl = "https://www.google.com"
 $BrowserExe = $null
 $BrowserKind = ""
 
-# 4. Prioridad 1: Búsqueda exhaustiva de Waterfox en Disco I: (SalsaNOW)
+# 3. Prioridad 1: Búsqueda exhaustiva de Waterfox en Disco I: (SalsaNOW)
+Write-Host "[*] Buscando Waterfox en SalsaNOW / Disco I: ..." -ForegroundColor Cyan
 $WaterfoxCandidates = @(
     "I:\Apps\SalsaNOW\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW\Waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW\waterfox.exe",
+    "I:\Apps\SalsaNOW\App\waterfox\waterfox.exe",
+    "I:\Apps\SalsaNOW\Apps\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\Waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\waterfox.exe",
@@ -144,6 +137,7 @@ $WaterfoxCandidates = @(
     "I:\waterfox\waterfox.exe",
     "I:\Waterfox\waterfox.exe",
     "I:\nOpenNow_Browser\Waterfox\waterfox.exe",
+    "I:\nOpenNow_Browser\waterfox\waterfox.exe",
     (Join-Path $TargetDrive "Apps\SalsaNOW\waterfox\waterfox.exe"),
     (Join-Path $TargetDrive "Apps\SalsaNOW\Waterfox\waterfox.exe"),
     (Join-Path $TargetDrive "Apps\SalsaNOW\waterfox.exe"),
@@ -183,7 +177,7 @@ if (-not $BrowserExe) {
     }
 }
 
-# Búsqueda recursiva profunda en Disco I: (Apps\SalsaNOW, Apps y raíz de I:)
+# Búsqueda recursiva en Disco I: (Apps\SalsaNOW, Apps y raíz de I:)
 if (-not $BrowserExe) {
     $searchRoots = @(
         (Join-Path $TargetDrive "Apps\SalsaNOW"),
@@ -203,8 +197,9 @@ if (-not $BrowserExe) {
     }
 }
 
-# 5. Prioridad 2: Brave Portable en $BraveDir o Disco I:
+# 4. Prioridad 2: Brave Portable en $BraveDir o Disco I:
 if (-not $BrowserExe) {
+    Write-Host "[*] Verificando Brave Portable en $BraveDir ..." -ForegroundColor Cyan
     $BraveCandidates = @(
         (Join-Path $BraveDir "brave-portable.exe"),
         (Join-Path $BraveDir "brave.exe"),
@@ -231,8 +226,9 @@ if (-not $BrowserExe -and (Test-Path $BraveDir)) {
     }
 }
 
-# 6. Si no está instalado ni Waterfox ni Brave, descargar e instalar Brave Portable en Disco I:
+# 5. Si no está instalado ni Waterfox ni Brave, descargar e instalar Brave Portable en Disco I:
 if (-not $BrowserExe) {
+    Write-Host "[+] Descargando Brave Portable v1.92.134-100 a $WorkDir ..." -ForegroundColor Yellow
     $BraveSetupUrl = "https://github.com/portapps/brave-portable/releases/download/1.92.134-100/brave-portable-win64-1.92.134-100-setup.exe"
     $InstallerPath = Join-Path $DownloadsDir "brave-portable-setup.exe"
     
@@ -248,17 +244,21 @@ if (-not $BrowserExe) {
 
     if ($needDownload) {
         $ProgressPreference = 'SilentlyContinue'
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        } catch {}
 
         # Método 1: curl.exe nativo de Windows (velocidad de 1000 Mbps en datacenter GFN)
         $curlCmd = Get-Command "curl.exe" -ErrorAction SilentlyContinue
         if ($curlCmd) {
-            & curl.exe -L --fail --retry 3 --connect-timeout 15 -o "$InstallerPath" "$BraveSetupUrl"
+            Write-Host "[*] Descargando mediante curl a velocidad de datacenter..." -ForegroundColor Gray
+            & curl.exe -L -k --fail --retry 3 --connect-timeout 15 -o "$InstallerPath" "$BraveSetupUrl"
         }
 
-        # Método 2: System.Net.WebClient (rápido sin sobrecarga de interfaz)
+        # Método 2: System.Net.WebClient
         if (-not (Test-Path $InstallerPath) -or (Get-Item $InstallerPath).Length -lt 50MB) {
             try {
+                Write-Host "[*] Descargando mediante .NET WebClient..." -ForegroundColor Gray
                 $wc = New-Object System.Net.WebClient
                 $wc.DownloadFile($BraveSetupUrl, $InstallerPath)
             } catch {}
@@ -267,6 +267,7 @@ if (-not $BrowserExe) {
         # Método 3: Invoke-WebRequest básico
         if (-not (Test-Path $InstallerPath) -or (Get-Item $InstallerPath).Length -lt 50MB) {
             try {
+                Write-Host "[*] Descargando mediante Invoke-WebRequest..." -ForegroundColor Gray
                 Invoke-WebRequest -Uri $BraveSetupUrl -OutFile $InstallerPath -UseBasicParsing
             } catch {}
         }
@@ -274,6 +275,7 @@ if (-not $BrowserExe) {
 
     # Si se descargó correctamente (> 50MB), instalar silenciosamente en $BraveDir
     if ((Test-Path $InstallerPath) -and (Get-Item $InstallerPath).Length -gt 50MB) {
+        Write-Host "[+] Instalando Brave Portable silenciosamente en $BraveDir ..." -ForegroundColor Green
         Start-Process -FilePath $InstallerPath -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=`"$BraveDir`"" -Wait
         
         $InstalledBrave = Join-Path $BraveDir "brave-portable.exe"
@@ -288,19 +290,24 @@ if (-not $BrowserExe) {
     }
 }
 
-# 7. PROHIBICIÓN ESTRICTA DE EDGE Y NAVEGADORES EN DISCO C:\
-# Edge y Chrome en C:\ quedan terminantemente prohibidos: no bloquean anuncios y todos los datos se borran al salir de GFN.
+# 6. PROHIBICIÓN ESTRICTA Y TERMINANTE DE EDGE Y NAVEGADORES EN DISCO C:\
 if (-not $BrowserExe) {
-    Write-Host "[!] ERROR: No se encontro Waterfox en I:\ ni se pudo completar la instalacion de Brave Portable en $BraveDir." -ForegroundColor Red
-    Write-Host "[!] Microsoft Edge en C:\ esta TERMINANTEMENTE BLOQUEADO para proteger tus datos de la unidad C:\." -ForegroundColor Yellow
+    Write-Host "[!] ERROR CRÍTICO: No se encontró Waterfox en I:\ ni se pudo completar la instalación de Brave Portable en $BraveDir." -ForegroundColor Red
+    Write-Host "[!] Microsoft Edge en C:\ está TERMINANTEMENTE BLOQUEADO para proteger tu privacidad y evitar anuncios." -ForegroundColor Yellow
     $LogFile = Join-Path $WorkDir "launcher.log"
     "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Ni Waterfox en I:\ ni Brave Portable disponibles. Microsoft Edge BLOQUEADO estrictamente." | Out-File -FilePath $LogFile -Append -Encoding UTF8
     Start-Sleep -Seconds 10
     exit 1
 }
 
-# 8. Lanzamiento del Navegador en Disco I:
+# 7. Lanzamiento del Navegador en Disco I:
+Write-Host "[+] Iniciando navegador ($BrowserKind) en Disco I: ..." -ForegroundColor Green
+
+# Asegurar que Edge permanezca cerrado
+Get-Process -Name "msedge", "msedgewebview2" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 if ($BrowserKind -eq "waterfox") {
+    Write-Host "[+] Navegador seleccionado: Waterfox ($BrowserExe)" -ForegroundColor Green
     # Configurar carpeta de descargas por defecto en Profile/user.js
     $UserJs = Join-Path $ProfileDir "user.js"
     $UserJsPref = "user_pref(`"browser.download.dir`", `"$($DownloadsDir -replace '\\', '\\\\')`");`r`nuser_pref(`"browser.download.folderList`", 2);`r`nuser_pref(`"browser.download.useDownloadDir`", true);"
@@ -319,6 +326,7 @@ if ($BrowserKind -eq "waterfox") {
         Start-Process -FilePath $BrowserExe -ArgumentList @("-profile", $ProfileDir, $LaunchUrl)
     }
 } else {
+    Write-Host "[+] Navegador seleccionado: Brave Portable ($BrowserExe)" -ForegroundColor Green
     $runningChromium = Get-Process -Name "brave" -ErrorAction SilentlyContinue
     if ($runningChromium) {
         Start-Process -FilePath $BrowserExe -ArgumentList @($LaunchUrl)
@@ -340,3 +348,6 @@ if ($BrowserKind -eq "waterfox") {
         Start-Process -FilePath $BrowserExe -ArgumentList $BrowserArgs
     }
 }
+
+Write-Host "[✓] ¡Navegador en la nube iniciado exitosamente en $TargetDrive!" -ForegroundColor Yellow
+Start-Sleep -Seconds 2

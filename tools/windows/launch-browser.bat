@@ -1,9 +1,14 @@
 @echo off
+setlocal
 title nOpenNow - Windows Browser Launcher
 echo ========================================================
 echo   nOpenNow Browser Launcher for GeForce NOW (Windows)
 echo ========================================================
 echo.
+
+:: Matar terminantemente Microsoft Edge
+taskkill /F /IM msedge.exe >nul 2>&1
+taskkill /F /IM msedgewebview2.exe >nul 2>&1
 
 if exist "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" (
     echo [+] Utilizando PowerShell 7 de SalsaNOW...

@@ -741,9 +741,9 @@ internal fun StreamControlsPanel(
     autoClickerIntervalSeconds: Int = 45,
     onAutoClickerIntervalChange: (Int) -> Unit = {},
     autoClickerMode: String = "silent",
-    onAutoClickerModeToggle: () -> Unit = {},
-    onOpenInAppBrowser: () -> Unit = {},
-    browserLowQualityEnabled: Boolean = true,
+    onSendPcCommand: (String) -> Unit = {},
+    onOpenKeyboard: () -> Unit = {},
+    browserLowQualityEnabled: Boolean = false,
     onBrowserLowQualityToggle: () -> Unit = {},
     highlightDone: Boolean = false,
     onClose: () -> Unit,
@@ -1180,7 +1180,8 @@ internal fun StreamControlsPanel(
                     onAutoClickerIntervalChange = onAutoClickerIntervalChange,
                     autoClickerMode = autoClickerMode,
                     onAutoClickerModeToggle = onAutoClickerModeToggle,
-                    onOpenInAppBrowser = onOpenInAppBrowser,
+                    onSendPcCommand = onSendPcCommand,
+                    onOpenKeyboard = onOpenKeyboard,
                     browserLowQualityEnabled = browserLowQualityEnabled,
                     onBrowserLowQualityToggle = onBrowserLowQualityToggle,
                     onButtonTone = onButtonTone,
@@ -1197,15 +1198,6 @@ internal fun StreamControlsPanel(
             }
             item {
                 ControlSection(stringResource(R.string.stream_panel_section_tools)) {
-                    ControlActionRow(
-                        label = stringResource(R.string.stream_tools_open_inapp_browser),
-                        actionLabel = stringResource(R.string.action_open),
-                        onClick = {
-                            onButtonTone()
-                            onOpenInAppBrowser()
-                        },
-                        value = "Pantalla completa vertical",
-                    )
                     ControlNavigationRow(
                         label = stringResource(R.string.stream_tools_title),
                         onClick = {
@@ -2684,12 +2676,86 @@ private fun LazyListScope.toolsPageItems(
     onAutoClickerIntervalChange: (Int) -> Unit,
     autoClickerMode: String,
     onAutoClickerModeToggle: () -> Unit,
-    onOpenInAppBrowser: () -> Unit,
-    browserLowQualityEnabled: Boolean = true,
+    onSendPcCommand: (String) -> Unit = {},
+    onOpenKeyboard: () -> Unit = {},
+    browserLowQualityEnabled: Boolean = false,
     onBrowserLowQualityToggle: () -> Unit = {},
     onButtonTone: () -> Unit,
 ) {
-    // 1. Anti-Inactividad / Auto-Clicker
+    // 1. Control del Navegador Cloud en la VM (GeForce NOW)
+    item {
+        ControlSection(stringResource(R.string.stream_tools_cloud_browser_title)) {
+            Text(
+                text = stringResource(R.string.stream_tools_cloud_browser_desc),
+                color = TextMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            ControlActionRow(
+                label = stringResource(R.string.stream_tools_start_cloud_browser),
+                actionLabel = "Iniciar",
+                onClick = {
+                    onButtonTone()
+                    onSendPcCommand("if exist I:\\nOpenNow_Browser\\nOpenNow-Browser.bat (start \"\" \"I:\\nOpenNow_Browser\\nOpenNow-Browser.bat\") else (\"I:\\Apps\\SalsaNOW SilentApps\\Powershell\\pwsh.exe\" -c \"irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex\")")
+                },
+                value = "Waterfox / Brave en Disco I:",
+            )
+            ControlActionRow(
+                label = stringResource(R.string.stream_tools_open_remote_keyboard),
+                actionLabel = "Teclado",
+                onClick = {
+                    onButtonTone()
+                    onOpenKeyboard()
+                },
+                value = "Escribir en la PC de GeForce NOW",
+            )
+            ControlSwitchRow(
+                label = stringResource(R.string.stream_tools_browser_low_quality_label),
+                checked = browserLowQualityEnabled,
+                onCheckedChange = {
+                    onButtonTone()
+                    onBrowserLowQualityToggle()
+                },
+                value = if (browserLowQualityEnabled) {
+                    stringResource(R.string.stream_tools_browser_low_quality_on)
+                } else {
+                    stringResource(R.string.stream_tools_browser_low_quality_off)
+                },
+            )
+            ControlActionRow(
+                label = "Abrir YouTube en la VM",
+                actionLabel = "Abrir",
+                onClick = {
+                    onButtonTone()
+                    onSendPcCommand("start https://www.youtube.com")
+                },
+                value = "Abre YouTube en el navegador de la PC",
+                indentLevel = 1,
+            )
+            ControlActionRow(
+                label = "Abrir Carpeta de Descargas",
+                actionLabel = "Abrir",
+                onClick = {
+                    onButtonTone()
+                    onSendPcCommand("start I:\\nOpenNow_Browser\\Downloads")
+                },
+                value = "I:\\nOpenNow_Browser\\Downloads",
+                indentLevel = 1,
+            )
+            ControlActionRow(
+                label = "Abrir Programa Descargado",
+                actionLabel = "Ejecutar",
+                onClick = {
+                    onButtonTone()
+                    onSendPcCommand("I:\\nOpenNow_Browser\\AbrirPrograma.bat")
+                },
+                value = "Ejecuta programas fuera del navegador",
+                indentLevel = 1,
+            )
+        }
+    }
+
+    // 2. Anti-Inactividad / Auto-Clicker
     item {
         ControlSection(stringResource(R.string.stream_tools_autoclicker_title)) {
             Text(
@@ -2739,40 +2805,6 @@ private fun LazyListScope.toolsPageItems(
                     indentLevel = 1,
                 )
             }
-        }
-    }
-
-    // 2. Navegador Integrado en la App (In-App Browser)
-    item {
-        ControlSection(stringResource(R.string.stream_tools_inapp_browser_title)) {
-            Text(
-                text = stringResource(R.string.stream_tools_inapp_browser_desc),
-                color = TextMuted,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-            ControlActionRow(
-                label = stringResource(R.string.stream_tools_open_inapp_browser),
-                actionLabel = "Abrir",
-                onClick = {
-                    onButtonTone()
-                    onOpenInAppBrowser()
-                },
-                value = "Navegador móvil dentro de OpenNOW",
-            )
-            ControlSwitchRow(
-                label = stringResource(R.string.stream_tools_browser_low_quality_label),
-                checked = browserLowQualityEnabled,
-                onCheckedChange = {
-                    onButtonTone()
-                    onBrowserLowQualityToggle()
-                },
-                value = if (browserLowQualityEnabled) {
-                    stringResource(R.string.stream_tools_browser_low_quality_on)
-                } else {
-                    stringResource(R.string.stream_tools_browser_low_quality_off)
-                },
-            )
         }
     }
 

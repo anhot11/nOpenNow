@@ -2,18 +2,21 @@
 .SYNOPSIS
   nOpenNow - Windows Cloud Browser Launcher for GeForce NOW
   Prioriza Waterfox (SalsaNOW en Disco I:) y Brave Portable v1.92.134-100.
-  Configura auto-inicio transparente en I:\Apps\SalsaNOW\StartupBatch.bat sin interferir con otros scripts.
+  Prohibe terminantemente Microsoft Edge en C:\ para preservar la privacidad del usuario.
 #>
 
 $ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Matar inmediatamente cualquier proceso de Microsoft Edge o WebView2
+Get-Process -Name "msedge", "msedgewebview2" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   nOpenNow — Remote Windows Cloud Browser for GFN        " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Configurar ruta de trabajo en Disco I: (con respaldo a D: o unidad del sistema)
+# 1. Configurar rutas de trabajo en Disco I: (con respaldo a D: o SystemDrive)
 $TargetDrive = if (Test-Path "I:\") { "I:\" } elseif (Test-Path "D:\") { "D:\" } else { "$env:SystemDrive\" }
 $WorkDir = Join-Path $TargetDrive "nOpenNow_Browser"
 $ProfileDir = Join-Path $WorkDir "Profile"
@@ -23,7 +26,8 @@ $BraveDir = Join-Path $WorkDir "Brave"
 $PersistentBat = Join-Path $WorkDir "nOpenNow-Browser.bat"
 
 Write-Host "[*] Unidad de almacenamiento: $TargetDrive" -ForegroundColor Gray
-Write-Host "[+] Directorio de trabajo: $WorkDir" -ForegroundColor Green
+Write-Host "[+] Directorio persistente: $WorkDir" -ForegroundColor Green
+Write-Host "[+] Directorio de descargas: $DownloadsDir" -ForegroundColor Green
 
 @($WorkDir, $ProfileDir, $CacheDir, $DownloadsDir, $BraveDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
@@ -31,14 +35,12 @@ Write-Host "[+] Directorio de trabajo: $WorkDir" -ForegroundColor Green
     }
 }
 
-# 2. Descargar o asegurar copia persistente de nOpenNow-Browser.bat en Disco I:
-if (-not (Test-Path $PersistentBat)) {
-    try {
-        $BatUrl = "https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat"
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        Invoke-WebRequest -Uri $BatUrl -OutFile $PersistentBat -UseBasicParsing
-    } catch {}
-}
+# 2. Descargar o asegurar copia persistente y actualizada de nOpenNow-Browser.bat en Disco I:
+try {
+    $BatUrl = "https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $BatUrl -OutFile $PersistentBat -UseBasicParsing
+} catch {}
 
 # 3. Registrar o actualizar Auto-Inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) sin interferir con otros scripts
 if (Test-Path "I:\") {
@@ -54,10 +56,8 @@ if (Test-Path "I:\") {
         $ExistingBatch = Get-Content -Path $StartupBatchPath -Raw -ErrorAction SilentlyContinue
         if ($ExistingBatch -and ($ExistingBatch -match "nOpenNow-Browser" -or $ExistingBatch -match "nOpenNow")) {
             $NeedsStartupRegistration = $false
-            Write-Host "[✓] Auto-inicio ya verificado en: $StartupBatchPath" -ForegroundColor Gray
-            # Si existía una versión previa sin 'async' (bloqueante), actualizarla a la versión no bloqueante
+            Write-Host "[✓] Auto-inicio verificado en SalsaNOW StartupBatch.bat" -ForegroundColor Gray
             if ($ExistingBatch -notmatch "async") {
-                Write-Host "[*] Actualizando entrada antigua en StartupBatch.bat a modo asíncrono..." -ForegroundColor Yellow
                 $UpdatedBatch = $ExistingBatch -replace '(?i)(.*nOpenNow-Browser.*)', 'if exist "I:\nOpenNow_Browser\nOpenNow-Browser.bat" start "" /min "I:\nOpenNow_Browser\nOpenNow-Browser.bat" async'
                 Set-Content -Path $StartupBatchPath -Value $UpdatedBatch -Encoding ASCII -Force
             }
@@ -66,10 +66,9 @@ if (Test-Path "I:\") {
 
     if ($NeedsStartupRegistration) {
         Write-Host "[+] Registrando auto-inicio en SalsaNOW ($StartupBatchPath)..." -ForegroundColor Green
-        # Se ejecuta de forma asíncrona no bloqueante (start "" /min) para no demorar el inicio de SalsaNOW
         $Entry = "`r`n:: [nOpenNow Browser Auto-Start]`r`nif exist `"$PersistentBat`" start `"`" /min `"$PersistentBat`" async`r`n"
         Add-Content -Path $StartupBatchPath -Value $Entry -Encoding ASCII
-        Write-Host "[✓] ¡Lanzador registrado exitosamente para iniciar con la PC en SalsaNOW!" -ForegroundColor Yellow
+        Write-Host "[✓] ¡Lanzador registrado exitosamente para iniciar con SalsaNOW!" -ForegroundColor Yellow
     }
 }
 
@@ -105,6 +104,8 @@ $WaterfoxCandidates = @(
     "I:\Apps\SalsaNOW\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW\Waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW\waterfox.exe",
+    "I:\Apps\SalsaNOW\App\waterfox\waterfox.exe",
+    "I:\Apps\SalsaNOW\Apps\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\Waterfox\waterfox.exe",
     "I:\Apps\SalsaNOW SilentApps\waterfox.exe",
@@ -113,6 +114,7 @@ $WaterfoxCandidates = @(
     "I:\waterfox\waterfox.exe",
     "I:\Waterfox\waterfox.exe",
     "I:\nOpenNow_Browser\Waterfox\waterfox.exe",
+    "I:\nOpenNow_Browser\waterfox\waterfox.exe",
     (Join-Path $TargetDrive "Apps\SalsaNOW\waterfox\waterfox.exe"),
     (Join-Path $TargetDrive "Apps\SalsaNOW\Waterfox\waterfox.exe"),
     (Join-Path $TargetDrive "Apps\SalsaNOW\waterfox.exe"),
@@ -220,16 +222,18 @@ if (-not $BrowserExe) {
 
     if ($needDownload) {
         $ProgressPreference = 'SilentlyContinue'
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        } catch {}
 
-        # Método 1: curl.exe nativo de Windows (ultra rápido, línea de 1000 Mbps en datacenter GFN)
+        # Método 1: curl.exe nativo de Windows (ultra rápido en datacenter GFN)
         $curlCmd = Get-Command "curl.exe" -ErrorAction SilentlyContinue
         if ($curlCmd) {
             Write-Host "[*] Descargando mediante curl a máxima velocidad..." -ForegroundColor Gray
-            & curl.exe -L --fail --retry 3 --connect-timeout 15 -o "$InstallerPath" "$BraveSetupUrl"
+            & curl.exe -L -k --fail --retry 3 --connect-timeout 15 -o "$InstallerPath" "$BraveSetupUrl"
         }
 
-        # Método 2: System.Net.WebClient (rápido sin sobrecarga de interfaz)
+        # Método 2: System.Net.WebClient
         if (-not (Test-Path $InstallerPath) -or (Get-Item $InstallerPath).Length -lt 50MB) {
             try {
                 Write-Host "[*] Descargando mediante .NET WebClient..." -ForegroundColor Gray
@@ -264,11 +268,10 @@ if (-not $BrowserExe) {
     }
 }
 
-# 8. PROHIBICIÓN ESTRICTA DE EDGE Y NAVEGADORES EN DISCO C:\
-# Edge y Chrome en C:\ quedan terminantemente prohibidos: no bloquean anuncios y todos los datos se borran al salir de GFN.
+# 8. PROHIBICIÓN ESTRICTA Y DEFINITIVA DE EDGE Y NAVEGADORES EN DISCO C:\
 if (-not $BrowserExe) {
     Write-Host "[!] ERROR CRÍTICO: No se encontró Waterfox en I:\ ni se pudo completar la instalación de Brave Portable en $BraveDir." -ForegroundColor Red
-    Write-Host "[!] Microsoft Edge en C:\ está TERMINANTEMENTE BLOQUEADO para proteger tus datos de la unidad C:\." -ForegroundColor Yellow
+    Write-Host "[!] Microsoft Edge en C:\ está TERMINANTEMENTE BLOQUEADO para proteger tus datos y privacidad." -ForegroundColor Yellow
     $LogFile = Join-Path $WorkDir "launcher.log"
     "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Ni Waterfox en I:\ ni Brave Portable disponibles. Microsoft Edge BLOQUEADO estrictamente." | Out-File -FilePath $LogFile -Append -Encoding UTF8
     Start-Sleep -Seconds 10
@@ -276,6 +279,11 @@ if (-not $BrowserExe) {
 }
 
 # 9. Lanzamiento del Navegador en Disco I:
+Write-Host "[+] Iniciando navegador ($BrowserKind) en Disco I: ..." -ForegroundColor Green
+
+# Asegurar que Edge permanezca cerrado
+Get-Process -Name "msedge", "msedgewebview2" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 if ($BrowserKind -eq "waterfox") {
     Write-Host "[+] Navegador seleccionado: Waterfox ($BrowserExe)" -ForegroundColor Green
 
@@ -326,3 +334,4 @@ if ($BrowserKind -eq "waterfox") {
 
 Write-Host ""
 Write-Host "[✓] ¡Navegador iniciado exitosamente en $TargetDrive!" -ForegroundColor Yellow
+Start-Sleep -Seconds 2

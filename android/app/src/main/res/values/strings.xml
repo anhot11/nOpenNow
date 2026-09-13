@@ -954,15 +954,15 @@
     <string name="stream_panel_section_tools">Tools</string>
     <string name="stream_tools_title">Tools</string>
     <string name="stream_tools_subtitle">Herramientas para la instancia de Windows</string>
-    <string name="stream_tools_browser_label">Android Browser</string>
-    <string name="stream_tools_browser_value">Lanzador .BAT (Disco I:)</string>
+    <string name="stream_tools_browser_label">Navegador Cloud</string>
+    <string name="stream_tools_browser_value">Waterfox / Brave (Disco I:)</string>
     <string name="stream_tools_section_windows">Lanzador de Navegador (.BAT)</string>
-    <string name="stream_tools_browser_desc">Ejecuta en Windows Waterfox (SalsaNOW Disco I:) o Brave Portable v1.92.134-100 en I:\\nOpenNow_Browser\\Brave con aceleración GPU RTX. Si prefieres navegar sólo desde el celular sin abrir ventanas en la PC, usa la sección superior \'Navegador Integrado en la App\'.</string>
-    <string name="stream_tools_copy_bat">Descargar Lanzador .BAT</string>
+    <string name="stream_tools_browser_desc">El navegador se ejecuta 100% en la máquina virtual de GeForce NOW (Disco I:). Todo el tráfico y descargas se procesan en la nube para proteger tu privacidad y evitar anuncios.</string>
+    <string name="stream_tools_copy_bat">Copiar Link de nOpenNow-Browser.bat</string>
     <string name="stream_tools_copy_powershell">Comando PowerShell 7 (SalsaNOW)</string>
     <string name="stream_tools_copy_url">Enlace Directo Script</string>
     <string name="stream_tools_instructions_title">¿Cómo usarlo en Windows GeForce NOW?</string>
-    <string name="stream_tools_instructions_body">1. Descarga y ejecuta nOpenNow-Browser.bat en Windows GFN.\n2. Abrirá automáticamente Waterfox de SalsaNOW (I:\\Apps\\SalsaNOW) o descargará Brave Portable a I:\\nOpenNow_Browser\\Brave.\n3. La consola de comandos se cerrará sola tras iniciar el navegador.\nTip: Para navegar desde tu celular sin ventana en la PC, abre el \'Navegador Integrado en la App\' arriba.</string>
+    <string name="stream_tools_instructions_body">1. Ejecuta nOpenNow-Browser.bat en Windows GFN (o pega el comando en SalsaNOW PowerShell 7).\n2. Iniciará Waterfox de SalsaNOW o Brave Portable en I:\\nOpenNow_Browser con adblock y aceleración GPU.\n3. Todos los datos, cookies y descargas se guardan en el Disco I: persistente.\n4. Microsoft Edge está estrictamente bloqueado para evitar fugas de privacidad en el disco C:.</string>
 
     <!-- Auto-Clicker & Anti-AFK -->
     <string name="stream_tools_autoclicker_title">Anti-Inactividad / Auto-Clicker</string>
@@ -972,12 +972,13 @@
     <string name="stream_tools_autoclicker_mode_silent">Silencioso (Anti-AFK sin mover cursor)</string>
     <string name="stream_tools_autoclicker_mode_click">Clic Activo (Auto-Clicker en pantalla)</string>
     <string name="stream_tools_autoclicker_interval">Intervalo de Señal</string>
-    <string name="stream_tools_inapp_browser_title">Navegador Integrado en la App</string>
-    <string name="stream_tools_inapp_browser_desc">Abre un navegador web móvil dentro de OpenNOW sin salir del juego ni de la app.</string>
-    <string name="stream_tools_open_inapp_browser">Abrir Navegador en la App</string>
+    <string name="stream_tools_cloud_browser_title">Control del Navegador Cloud en la VM</string>
+    <string name="stream_tools_cloud_browser_desc">Controla y abre el navegador en la máquina virtual de GeForce NOW sin salir del stream.</string>
+    <string name="stream_tools_start_cloud_browser">Iniciar Navegador en la VM (Disco I:)</string>
+    <string name="stream_tools_open_remote_keyboard">Abrir Teclado Remoto para Navegar</string>
 
     <!-- Modo Browser Calidad Mínima -->
-    <string name="stream_tools_browser_low_quality_label">Calidad Mínima en Navegador</string>
+    <string name="stream_tools_browser_low_quality_label">Ahorro de Datos en Navegación (2 Mbps)</string>
     <string name="stream_tools_browser_low_quality_on">2 Mbps (Ahorro Máximo 90% datos)</string>
     <string name="stream_tools_browser_low_quality_off">Calidad Normal de Juego</string>
 

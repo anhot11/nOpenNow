@@ -187,8 +187,7 @@ internal fun StreamScreen(
         preferVirtualController = preferVirtualController,
         preferKeyboardMouse = streamInputMode == StreamInputMode.KeyboardMouse,
     )
-    var inAppBrowserOpen by rememberSaveable { mutableStateOf(false) }
-    var browserLowQualityEnabled by rememberSaveable { mutableStateOf(true) }
+    var browserLowQualityEnabled by rememberSaveable { mutableStateOf(false) }
     var autoClickerEnabled by rememberSaveable { mutableStateOf(false) }
     var autoClickerIntervalSeconds by rememberSaveable { mutableStateOf(45) }
     var autoClickerMode by rememberSaveable { mutableStateOf("silent") }
@@ -200,9 +199,9 @@ internal fun StreamScreen(
         suppressedByPhysicalController = touchControlsSuppressedByPhysicalController,
         physicalMouseConnected = physicalMouseConnected,
         allowWithPhysicalMouse = showTouchControlsWithPhysicalMouse,
-    ) && !nativeTouchActive && !inAppBrowserOpen
+    ) && !nativeTouchActive
     val touchMouseActive =
-        streamReady && touchInputEnabled && state.settings.androidTouch.mousePad && !nativeTouchActive && !inAppBrowserOpen
+        streamReady && touchInputEnabled && state.settings.androidTouch.mousePad && !nativeTouchActive
     val fallbackSessionStartedAtMs = remember(session?.sessionId) { System.currentTimeMillis() }
     val sessionStartedAtMs = session?.timerStartedAtMs ?: fallbackSessionStartedAtMs
     var timerNowMs by remember(session?.sessionId) { mutableStateOf(System.currentTimeMillis()) }
@@ -301,7 +300,7 @@ internal fun StreamScreen(
         }
     }
     val streamOverlayOpen = controlsOpen || exitConfirmOpen || keyboardOpen || streamGuideOpen ||
-        physicalControllerPromptOpen || inputModePromptOpen != null || touchLayoutEditing || inAppBrowserOpen
+        physicalControllerPromptOpen || inputModePromptOpen != null || touchLayoutEditing
     val streamKeyboardImeVisible = keyboardOpen && WindowInsets.ime.getBottom(density) > 0
     val externalMousePointerCaptureActive = shouldEnableExternalMousePointerCapture(
         streamReady = streamReady,
@@ -310,7 +309,6 @@ internal fun StreamScreen(
     )
     val handleStreamBack = {
         when {
-            inAppBrowserOpen -> inAppBrowserOpen = false
             streamGuideOpen && streamGuideStep == StreamGuideStep.OpenControls -> openControlsForGuide()
             streamGuideOpen && streamGuideStep == StreamGuideStep.PressDone && controlsOpen -> {
                 controlsOpen = false
@@ -551,13 +549,13 @@ internal fun StreamScreen(
         }
     }
 
-    // Modo Browser: cuando el navegador web está activo, reduce la calidad de GFN al mínimo (2 Mbps)
-    LaunchedEffect(inAppBrowserOpen, browserLowQualityEnabled, streamReady) {
+    // Modo Ahorro de Datos (2 Mbps) para navegación en la nube
+    LaunchedEffect(browserLowQualityEnabled, streamReady) {
         if (!streamReady) return@LaunchedEffect
-        if (inAppBrowserOpen && browserLowQualityEnabled) {
+        if (browserLowQualityEnabled) {
             client.updateBitrateLimit(2_000)
             liveBitrateLimitKbps = 2_000
-        } else if (!inAppBrowserOpen && streamReady) {
+        } else {
             val normalBitrate = (state.settings.stream.maxBitrateMbps * 1000).coerceAtLeast(5000)
             client.updateBitrateLimit(normalBitrate)
             liveBitrateLimitKbps = normalBitrate
@@ -1249,10 +1247,13 @@ internal fun StreamScreen(
                     autoClickerIntervalSeconds = autoClickerIntervalSeconds,
                     onAutoClickerIntervalChange = { autoClickerIntervalSeconds = it },
                     autoClickerMode = autoClickerMode,
-                    onAutoClickerModeToggle = { autoClickerMode = if (autoClickerMode == "silent") "click" else "silent" },
-                    onOpenInAppBrowser = {
+                    onSendPcCommand = { cmd ->
+                        client.syncText(null, cmd)
+                        client.sendTextControlKey(KeyEvent.KEYCODE_ENTER)
+                    },
+                    onOpenKeyboard = {
                         controlsOpen = false
-                        inAppBrowserOpen = true
+                        keyboardOpen = true
                     },
                     browserLowQualityEnabled = browserLowQualityEnabled,
                     onBrowserLowQualityToggle = {
@@ -1328,16 +1329,6 @@ internal fun StreamScreen(
                         },
                     )
                 }
-            }
-            if (inAppBrowserOpen) {
-                OpenNowInAppBrowserDialog(
-                    lowQualityActive = browserLowQualityEnabled,
-                    onDismissRequest = { inAppBrowserOpen = false },
-                    onRunCommandOnPc = { cmd ->
-                        client.syncText(null, cmd)
-                        client.sendTextControlKey(KeyEvent.KEYCODE_ENTER)
-                    },
-                )
             }
         }
     }
