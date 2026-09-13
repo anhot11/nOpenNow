@@ -39,7 +39,7 @@ if (-not (Test-Path $PersistentBat)) {
     } catch {}
 }
 
-# 3. Registrar Auto-Inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) de forma segura y no bloqueante
+# 3. Registrar o actualizar Auto-Inicio en SalsaNOW (I:\Apps\SalsaNOW\StartupBatch.bat) sin interferir con otros scripts
 if (Test-Path "I:\") {
     $SalsaNowAppsDir = "I:\Apps\SalsaNOW"
     $StartupBatchPath = Join-Path $SalsaNowAppsDir "StartupBatch.bat"
@@ -54,6 +54,12 @@ if (Test-Path "I:\") {
         if ($ExistingBatch -and ($ExistingBatch -match "nOpenNow-Browser" -or $ExistingBatch -match "nOpenNow")) {
             $NeedsStartupRegistration = $false
             Write-Host "[✓] Auto-inicio ya verificado en: $StartupBatchPath" -ForegroundColor Gray
+            # Si existía una versión previa sin 'async' (bloqueante), actualizarla a la versión no bloqueante
+            if ($ExistingBatch -notmatch "async") {
+                Write-Host "[*] Actualizando entrada antigua en StartupBatch.bat a modo asíncrono..." -ForegroundColor Yellow
+                $UpdatedBatch = $ExistingBatch -replace '(?i)(.*nOpenNow-Browser.*)', 'if exist "I:\nOpenNow_Browser\nOpenNow-Browser.bat" start "" /min "I:\nOpenNow_Browser\nOpenNow-Browser.bat" async'
+                Set-Content -Path $StartupBatchPath -Value $UpdatedBatch -Encoding ASCII -Force
+            }
         }
     }
 
@@ -66,11 +72,33 @@ if (Test-Path "I:\") {
     }
 }
 
+# 4. Crear lanzador de programas externo (AbrirPrograma.bat) para abrir descargas fuera del navegador
+$RunnerBat = Join-Path $WorkDir "AbrirPrograma.bat"
+$RunnerContent = @"
+@echo off
+title nOpenNow Program Runner
+if "%~1"=="" (
+    start "" "$DownloadsDir"
+    exit /b
+)
+if exist "%~1" (
+    start "" "%~1"
+    exit /b
+)
+if exist "$DownloadsDir\%~nx1" (
+    start "" "$DownloadsDir\%~nx1"
+    exit /b
+)
+start "" "%~1"
+"@
+Set-Content -Path $RunnerBat -Value $RunnerContent -Encoding ASCII -Force
+Copy-Item -Path $RunnerBat -Destination (Join-Path $WorkDir "OpenProgram.bat") -Force -ErrorAction SilentlyContinue
+
 $LaunchUrl = "https://www.google.com"
 $BrowserExe = $null
 $BrowserKind = ""
 
-# 4. Prioridad 1: Waterfox en Disco I: (SalsaNOW)
+# 5. Prioridad 1: Waterfox en Disco I: (SalsaNOW)
 Write-Host "[*] Verificando Waterfox en SalsaNOW / Disco I: ..." -ForegroundColor Cyan
 $WaterfoxCandidates = @(
     "I:\Apps\SalsaNOW\waterfox\waterfox.exe",
@@ -98,7 +126,7 @@ if (-not $BrowserExe -and (Test-Path (Join-Path $TargetDrive "Apps"))) {
     }
 }
 
-# 5. Prioridad 2: Brave Portable en $BraveDir
+# 6. Prioridad 2: Brave Portable en $BraveDir
 if (-not $BrowserExe) {
     Write-Host "[*] Verificando Brave Portable en $BraveDir ..." -ForegroundColor Cyan
     $BraveCandidates = @(
@@ -115,15 +143,24 @@ if (-not $BrowserExe) {
     }
 }
 
-# 6. Si no está ni Waterfox ni Brave instalado, descargar Brave Portable 1.92.134-100
+# 7. Si no está ni Waterfox ni Brave instalado, descargar Brave Portable 1.92.134-100 de forma segura
 if (-not $BrowserExe) {
     Write-Host "[+] Descargando Brave Portable v1.92.134-100 a $WorkDir ..." -ForegroundColor Yellow
     $BraveSetupUrl = "https://github.com/portapps/brave-portable/releases/download/1.92.134-100/brave-portable-win64-1.92.134-100-setup.exe"
     $InstallerPath = Join-Path $DownloadsDir "brave-portable-setup.exe"
     
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        Invoke-WebRequest -Uri $BraveSetupUrl -OutFile $InstallerPath -UseBasicParsing
+        # Comprobar si existe un instalador corrupto de intentos previos
+        if (Test-Path $InstallerPath) {
+            $existingLen = (Get-Item $InstallerPath).Length
+            if ($existingLen -lt 20MB) {
+                Remove-Item -Path $InstallerPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if (-not (Test-Path $InstallerPath)) {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+            Invoke-WebRequest -Uri $BraveSetupUrl -OutFile $InstallerPath -UseBasicParsing
+        }
         if (Test-Path $InstallerPath) {
             Write-Host "[+] Instalando Brave Portable silenciosamente en $BraveDir ..." -ForegroundColor Green
             Start-Process -FilePath $InstallerPath -ArgumentList "/VERYSILENT /DIR=`"$BraveDir`" /PORTABLE=1" -Wait
@@ -139,11 +176,11 @@ if (-not $BrowserExe) {
             }
         }
     } catch {
-        Write-Host "[!] Error al descargar Brave Portable: $_" -ForegroundColor Red
+        Write-Host "[!] Error al descargar/instalar Brave Portable: $_" -ForegroundColor Red
     }
 }
 
-# 7. Fallback de emergencia a Chrome / Edge si no se pudo obtener ni Waterfox ni Brave
+# 8. Fallback de emergencia a Chrome / Edge si no se pudo obtener ni Waterfox ni Brave
 if (-not $BrowserExe) {
     Write-Host "[!] Ni Waterfox ni Brave disponibles. Buscando navegador en el sistema..." -ForegroundColor Yellow
     $FallbackCandidates = @(
@@ -162,34 +199,49 @@ if (-not $BrowserExe) {
     }
 }
 
-# 8. Lanzamiento del Navegador
+# 9. Lanzamiento del Navegador sin bloqueos por sesiones existentes y configurando Downloads por defecto
 if ($BrowserExe) {
     if ($BrowserKind -eq "waterfox") {
         Write-Host "[+] Navegador: Waterfox ($BrowserExe)" -ForegroundColor Green
-        Write-Host "[+] Lanzando con perfil en $ProfileDir ..." -ForegroundColor Green
-        $WfArgs = @(
-            "-profile `"$ProfileDir`"",
-            "-new-instance",
-            "$LaunchUrl"
-        )
-        Start-Process -FilePath $BrowserExe -ArgumentList ($WfArgs -join " ")
+        
+        # Configurar carpeta de descargas por defecto en Profile/user.js
+        $UserJs = Join-Path $ProfileDir "user.js"
+        $UserJsPref = "user_pref(`"browser.download.dir`", `"$($DownloadsDir -replace '\\', '\\\\')`");`r`nuser_pref(`"browser.download.folderList`", 2);`r`nuser_pref(`"browser.download.useDownloadDir`", true);"
+        Set-Content -Path $UserJs -Value $UserJsPref -Encoding ASCII -Force
+
+        # Si Waterfox ya está en ejecución, abrir URL sin bloquear el perfil
+        $runningWf = Get-Process -Name "waterfox" -ErrorAction SilentlyContinue
+        if ($runningWf) {
+            Write-Host "[+] Waterfox ya en ejecución, abriendo pestaña..." -ForegroundColor Green
+            Start-Process -FilePath $BrowserExe -ArgumentList "$LaunchUrl"
+        } else {
+            Write-Host "[+] Lanzando Waterfox con perfil en $ProfileDir ..." -ForegroundColor Green
+            Start-Process -FilePath $BrowserExe -ArgumentList "-profile `"$ProfileDir`" `"$LaunchUrl`""
+        }
     } else {
         Write-Host "[+] Navegador: $BrowserExe" -ForegroundColor Green
-        Write-Host "[+] Iniciando con aceleración por hardware GPU RTX..." -ForegroundColor Green
-        $BrowserArgs = @(
-            "--start-maximized",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-features=Translate,InterestFeedContentSuggestions",
-            "--enable-features=VaapiVideoDecoder,ParallelDownloading",
-            "--enable-gpu-rasterization",
-            "--enable-zero-copy",
-            "--ignore-gpu-blocklist",
-            "--disk-cache-dir=`"$CacheDir`"",
-            "--user-data-dir=`"$ProfileDir`"",
-            "$LaunchUrl"
-        )
-        Start-Process -FilePath $BrowserExe -ArgumentList ($BrowserArgs -join " ")
+        $runningChromium = Get-Process -Name "brave", "chrome", "msedge" -ErrorAction SilentlyContinue
+        if ($runningChromium) {
+            Write-Host "[+] Navegador ya en ejecución, abriendo URL..." -ForegroundColor Green
+            Start-Process -FilePath $BrowserExe -ArgumentList "$LaunchUrl"
+        } else {
+            Write-Host "[+] Iniciando con aceleración por hardware GPU RTX..." -ForegroundColor Green
+            $BrowserArgs = @(
+                "--start-maximized",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-features=Translate,InterestFeedContentSuggestions",
+                "--enable-features=VaapiVideoDecoder,ParallelDownloading",
+                "--enable-gpu-rasterization",
+                "--enable-zero-copy",
+                "--ignore-gpu-blocklist",
+                "--default-download-directory=`"$DownloadsDir`"",
+                "--disk-cache-dir=`"$CacheDir`"",
+                "--user-data-dir=`"$ProfileDir`"",
+                "$LaunchUrl"
+            )
+            Start-Process -FilePath $BrowserExe -ArgumentList ($BrowserArgs -join " ")
+        }
     }
     Write-Host ""
     Write-Host "[✓] ¡Navegador iniciado exitosamente en $TargetDrive!" -ForegroundColor Yellow

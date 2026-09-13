@@ -1333,6 +1333,10 @@ internal fun StreamScreen(
                 OpenNowInAppBrowserDialog(
                     lowQualityActive = browserLowQualityEnabled,
                     onDismissRequest = { inAppBrowserOpen = false },
+                    onRunCommandOnPc = { cmd ->
+                        client.syncText(null, cmd)
+                        client.sendTextControlKey(KeyEvent.KEYCODE_ENTER)
+                    },
                 )
             }
         }
