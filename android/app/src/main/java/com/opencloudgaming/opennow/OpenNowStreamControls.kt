@@ -2781,7 +2781,7 @@ private fun LazyListScope.toolsPageItems(
     item {
         val clipboard = LocalClipboardManager.current
         var copiedBat by remember { mutableStateOf(false) }
-        val batUrl = "https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat"
+        val batUrl = "https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat"
 
         ControlActionRow(
             label = stringResource(R.string.stream_tools_copy_bat),

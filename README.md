@@ -38,9 +38,9 @@ flowchart TD
 3. Dispones de 3 potentes utilidades:
    - **Anti-Inactividad / Auto-Clicker**: Activa la protección Anti-AFK y personaliza el intervalo y modo (Silencioso o Clic). Verás un badge visual verde en pantalla indicando que la sesión está protegida.
    - **Navegador en la App**: Toca "Abrir" para desplegar el navegador web superpuesto sin salir de tu juego.
-   - **Lanzador Windows GFN (.BAT)**: Copia el enlace directo al archivo `.bat`:
+   - **Lanzador Windows GFN (.BAT)**: Descarga directa del archivo `.bat` ejecutable (descarga forzada, no visor de texto):
      ```
-     https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat
+     https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat
      ```
      o copia el comando de SalsaNOW PowerShell 7:
      ```powershell
