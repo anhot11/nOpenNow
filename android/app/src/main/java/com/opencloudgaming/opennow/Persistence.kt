@@ -447,8 +447,9 @@ class SettingsStore(context: Context) {
 }
 
 class AuthStore(context: Context) {
-    private val sharedPrefs = context.applicationContext.getSharedPreferences(SECURE_STORE_NAME, Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(loadAndMigrate(context))
+    private val appContext = context.applicationContext
+    private val sharedPrefs = appContext.getSharedPreferences(SECURE_STORE_NAME, Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(loadAndMigrate(appContext))
     val state: StateFlow<PersistedAuthState> = _state
 
     private fun loadAndMigrate(context: Context): PersistedAuthState {
@@ -483,10 +484,27 @@ class AuthStore(context: Context) {
             }
         }
 
-        if (migratedState != null) {
-            return migratedState
+        val current = migratedState ?: load()
+
+        // Restoring session from PersistentAccountVault (survives app uninstall and reinstall)
+        if (current.sessions.isEmpty()) {
+            val restoredVault = PersistentAccountVault.restore(context)
+            if (restoredVault != null && restoredVault.first.sessions.isNotEmpty()) {
+                val (restoredAuth, restoredDeviceId) = restoredVault
+                sharedPrefs.edit().putString(KEY_AUTH, OpenNowJson.encodeToString(restoredAuth)).commit()
+                if (!restoredDeviceId.isNullOrBlank() && !sharedPrefs.contains(KEY_DEVICE_ID)) {
+                    sharedPrefs.edit().putString(KEY_DEVICE_ID, restoredDeviceId).commit()
+                }
+                return restoredAuth
+            }
         }
-        return load()
+
+        // Keep persistent vault in sync if we have an existing session
+        if (current.sessions.isNotEmpty()) {
+            PersistentAccountVault.backup(context, current, sharedPrefs.getString(KEY_DEVICE_ID, null))
+        }
+
+        return current
     }
 
     private fun load(): PersistedAuthState {
@@ -501,6 +519,11 @@ class AuthStore(context: Context) {
     fun save(next: PersistedAuthState) = synchronized(AUTH_STORE_LOCK) {
         sharedPrefs.edit().putString(KEY_AUTH, OpenNowJson.encodeToString(next)).commit()
         _state.value = next
+        if (next.sessions.isNotEmpty()) {
+            PersistentAccountVault.backup(appContext, next, stableDeviceId())
+        } else {
+            PersistentAccountVault.clear(appContext)
+        }
     }
 
     fun activeSession(): AuthSession? = synchronized(AUTH_STORE_LOCK) {
@@ -548,11 +571,19 @@ class AuthStore(context: Context) {
 
     fun clear() = synchronized(AUTH_STORE_LOCK) {
         save(PersistedAuthState())
+        PersistentAccountVault.clear(appContext)
     }
 
     fun stableDeviceId(): String {
         val existing = sharedPrefs.getString(KEY_DEVICE_ID, null)
         if (!existing.isNullOrBlank()) return existing
+
+        val restoredDeviceId = PersistentAccountVault.restore(appContext)?.second
+        if (!restoredDeviceId.isNullOrBlank()) {
+            sharedPrefs.edit().putString(KEY_DEVICE_ID, restoredDeviceId).commit()
+            return restoredDeviceId
+        }
+
         val next = UUID.randomUUID().toString()
         sharedPrefs.edit().putString(KEY_DEVICE_ID, next).commit()
         return next

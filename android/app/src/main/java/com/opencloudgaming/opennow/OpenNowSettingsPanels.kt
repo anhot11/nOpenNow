@@ -857,6 +857,48 @@ private fun AccountServicesSettingsPanel(state: OpenNowUiState, viewModel: OpenN
                 }
             },
         )
+        PersistentSessionBackupCard(context = context)
+    }
+}
+
+@Composable
+private fun PersistentSessionBackupCard(context: android.content.Context) {
+    val hasBackup = remember { PersistentAccountVault.hasBackup(context) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "🛡️ Respaldo Persistente de Cuenta",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF2E7D32).copy(alpha = 0.2f),
+                ) {
+                    Text(
+                        text = if (hasBackup) "ACTIVO" else "LISTO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFA6E3A1),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Text(
+                text = "Tu sesión se guarda de forma segura en el almacenamiento persistente del dispositivo. Aunque desinstales o borres la app, tu cuenta se recuperará automáticamente al volver a instalarla.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

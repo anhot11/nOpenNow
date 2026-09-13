@@ -40,7 +40,7 @@ internal const val ANDROID_UPDATE_SOURCE_URL = "https://api.github.com/repos/anh
 internal const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
 internal const val GOOGLE_PLAY_STORE_LISTING_URL = "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}"
 private const val UPDATE_FILE_PROVIDER_AUTHORITY_SUFFIX = ".updates"
-private val UPDATE_USER_AGENT = "OpenNOW-AndroidUpdater/${BuildConfig.VERSION_NAME}"
+private val UPDATE_USER_AGENT = "newOpenNow-AndroidUpdater/${BuildConfig.VERSION_NAME}"
 private val KNOWN_PACKAGE_INSTALLER_GRANT_TARGETS = setOf(
     "com.android.packageinstaller",
     "com.google.android.packageinstaller",
@@ -231,26 +231,31 @@ class AndroidAppUpdater(
                 latestCandidate = candidate
                 downloadedApk = null
                 val checkedAt = System.currentTimeMillis()
-                if (candidate.versionCode != null && candidate.versionCode <= BuildConfig.VERSION_CODE.toLong()) {
+                val currentCode = BuildConfig.VERSION_CODE.toLong()
+                val currentName = BuildConfig.VERSION_NAME
+
+                val isNewer = when {
+                    candidate.versionCode != null && candidate.versionCode > currentCode -> true
+                    candidate.versionCode != null && candidate.versionCode <= currentCode -> false
+                    candidate.versionName != null -> compareSemanticVersions(candidate.versionName, currentName) > 0
+                    else -> false
+                }
+
+                if (!isNewer) {
                     publish(
                         status = AndroidUpdateStatus.NotAvailable,
                         sourceUrl = normalizedSourceUrl,
-                        message = "OpenNOW Android is up to date.",
+                        message = "new OpenNow está actualizado (v$currentName).",
                         availableVersionName = candidate.versionName,
                         availableVersionCode = candidate.versionCode,
                         releaseNotes = candidate.releaseNotes,
                         lastCheckedAt = checkedAt,
                     )
                 } else {
-                    val compareHint = if (candidate.versionCode == null) {
-                        " Version could not be compared, so only download this source if you trust it."
-                    } else {
-                        ""
-                    }
                     publish(
                         status = AndroidUpdateStatus.Available,
                         sourceUrl = normalizedSourceUrl,
-                        message = "OpenNOW ${candidate.displayVersion} is available to download.$compareHint",
+                        message = "new OpenNow v${candidate.displayVersion} está disponible para descargar.",
                         availableVersionName = candidate.versionName,
                         availableVersionCode = candidate.versionCode,
                         releaseNotes = candidate.releaseNotes,
@@ -680,23 +685,66 @@ internal fun parseAndroidUpdateCandidate(sourceUrl: String, body: String): Andro
     )
 }
 
-private fun parseGithubReleaseCandidate(sourceUrl: String, root: JsonObject): AndroidUpdateCandidate? {
+internal fun compareSemanticVersions(v1: String?, v2: String?): Int {
+    if (v1 == null && v2 == null) return 0
+    if (v1 == null) return -1
+    if (v2 == null) return 1
+    val clean1 = v1.removePrefix("v").trim().substringBefore("-").substringBefore("+")
+    val clean2 = v2.removePrefix("v").trim().substringBefore("-").substringBefore("+")
+    val parts1 = clean1.split(".").mapNotNull { it.toIntOrNull() }
+    val parts2 = clean2.split(".").mapNotNull { it.toIntOrNull() }
+    val maxLen = maxOf(parts1.size, parts2.size)
+    for (i in 0 until maxLen) {
+        val p1 = parts1.getOrElse(i) { 0 }
+        val p2 = parts2.getOrElse(i) { 0 }
+        if (p1 != p2) return p1.compareTo(p2)
+    }
+    return 0
+}
+
+private fun extractVersionCodeFromBody(body: String?): Long? {
+    if (body.isNullOrBlank()) return null
+    val regex = Regex("""(?i)(?:versionCode|build|code)\s*[:=]\s*(\d+)""")
+    return regex.find(body)?.groupValues?.getOrNull(1)?.toLongOrNull()
+}
+
+internal fun parseGithubReleaseCandidate(
+    sourceUrl: String,
+    root: JsonObject,
+    preferDebugApk: Boolean = BuildConfig.DEBUG,
+): AndroidUpdateCandidate? {
     val assets = root["assets"] as? JsonArray ?: return null
-    val apkAsset = assets.mapNotNull { it as? JsonObject }
-        .firstOrNull { asset ->
+    val allAssets = assets.mapNotNull { it as? JsonObject }
+
+    // Prioritize correct APK variant: Release APK for release builds, Debug APK for debug builds
+    val preferredApkName = if (preferDebugApk) "app-debug.apk" else "app-release.apk"
+    val apkAsset = allAssets.firstOrNull { it.string("name").equals(preferredApkName, ignoreCase = true) }
+        ?: allAssets.firstOrNull { asset ->
+            val name = asset.string("name").orEmpty()
+            val isDebug = name.contains("debug", ignoreCase = true)
+            if (preferDebugApk) isDebug else (!isDebug && name.endsWith(".apk", ignoreCase = true))
+        }
+        ?: allAssets.firstOrNull { asset ->
             val name = asset.string("name").orEmpty()
             val contentType = asset.string("content_type").orEmpty()
             name.endsWith(".apk", ignoreCase = true) || contentType.equals(APK_MIME_TYPE, ignoreCase = true)
-        } ?: return null
+        }
+        ?: return null
+
     val apkUrl = apkAsset.string("browser_download_url", "downloadUrl", "url")?.let { resolveUpdateUrl(sourceUrl, it) } ?: return null
+    val body = root.string("body")
+    val rawTag = root.string("tag_name", "name")?.trim()
+    val versionName = rawTag?.removePrefix("v")?.trim()
     val versionCode = root.long("versionCode", "version_code", "androidVersionCode")
+        ?: extractVersionCodeFromBody(body)
+
     return AndroidUpdateCandidate(
         sourceUrl = sourceUrl,
         apkUrl = apkUrl,
-        versionName = root.string("tag_name", "name")?.removePrefix("v"),
+        versionName = versionName,
         versionCode = versionCode,
         sha256 = apkAsset.string("sha256", "digest")?.removePrefix("sha256:")?.cleanHex(),
-        releaseNotes = normalizeReleaseNotes(root.string("body")),
+        releaseNotes = normalizeReleaseNotes(body),
         fileName = apkAsset.string("name"),
     )
 }
@@ -728,11 +776,11 @@ private fun HttpUrl.isLoopbackHttp(): Boolean =
 private fun AndroidUpdateCandidate.safeFileName(): String {
     val raw = fileName
         ?: apkUrl.toHttpUrlOrNull()?.pathSegments?.lastOrNull()
-        ?: "OpenNOW-${versionName ?: versionCode ?: "update"}.apk"
+        ?: "newOpenNow-${versionName ?: versionCode ?: "update"}.apk"
     val normalized = raw.substringBefore("?")
         .replace(Regex("[^A-Za-z0-9._-]"), "_")
         .takeIf { it.endsWith(".apk", ignoreCase = true) }
-        ?: "OpenNOW-${versionName ?: versionCode ?: "update"}.apk"
+        ?: "newOpenNow-${versionName ?: versionCode ?: "update"}.apk"
     return normalized
 }
 

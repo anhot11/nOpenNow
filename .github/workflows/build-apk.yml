@@ -61,6 +61,22 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
+      - name: Generate Update Manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_CLEAN="${VERSION#v}"
+          cat <<EOF > android/app/build/outputs/apk/release/update.json
+          {
+            "versionName": "$VERSION_CLEAN",
+            "tag_name": "$VERSION",
+            "name": "nOpenNow Release $VERSION",
+            "releaseNotes": "new OpenNow $VERSION",
+            "apkUrl": "https://github.com/anhot11/nOpenNow/releases/download/$VERSION/app-release.apk",
+            "debugApkUrl": "https://github.com/anhot11/nOpenNow/releases/download/$VERSION/app-debug.apk"
+          }
+          EOF
+
       - name: Publish GitHub Release on Tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -68,6 +84,7 @@ jobs:
           files: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/update.json
             tools/windows/nOpenNow-Browser.bat
           name: nOpenNow Release ${{ github.ref_name }}
           draft: false

@@ -14,20 +14,27 @@ Release and debug builds include `arm64-v8a`, `armeabi-v7a`, and `x86_64`. The `
 
 ## APK Update Manifest
 
-APK and debug builds check `https://api.printedwaste.com/releases/opennow/latest` and can download the returned APK. App Bundle builds installed from Google Play detect `com.android.vending` as the install source and do not check, download, or install APK updates. The manifest should look like this:
+APK and debug builds check `https://api.github.com/repos/anhot11/nOpenNow/releases/latest` and download the appropriate APK (`app-release.apk` for release builds, `app-debug.apk` for debug builds). App Bundle builds installed from Google Play detect `com.android.vending` as the install source and do not check, download, or install APK updates. The manifest matches the GitHub Releases API format:
 
 ```json
 {
-  "versionCode": 7,
-  "versionName": "0.5.2",
-  "apkUrl": "https://api.printedwaste.com/release-files/opennow/app-release.apk",
-  "artifactUrl": "https://api.printedwaste.com/release-files/opennow/app-release.apk",
-  "sha256": "optional lowercase apk checksum",
-  "releaseNotes": "Short notes shown in Settings\nSecond line"
+  "tag_name": "v1.3.5",
+  "name": "nOpenNow Release v1.3.5",
+  "body": "Release notes...",
+  "assets": [
+    {
+      "name": "app-release.apk",
+      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.5/app-release.apk"
+    },
+    {
+      "name": "app-debug.apk",
+      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.5/app-debug.apk"
+    }
+  ]
 }
 ```
 
-`apkUrl`, `artifactUrl`, or `url` may point at the APK. `releaseNotes` may use real newlines or literal `\n` separators. The app compares `versionCode` against its installed build and asks Android's package installer to confirm the downloaded APK.
+The app compares semantic versions against `BuildConfig.VERSION_NAME` and `BuildConfig.VERSION_CODE`, downloads the matching build variant, and asks Android's package installer to confirm the downloaded APK.
 
 ## Runtime Notes
 

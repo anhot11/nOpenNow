@@ -56,19 +56,19 @@ class AppUpdateTest {
     @Test
     fun parsesGithubReleaseApkAsset() {
         val candidate = parseAndroidUpdateCandidate(
-            "https://api.github.com/repos/OpenCloudGaming/OpenNOW/releases/latest",
+            "https://api.github.com/repos/anhot11/nOpenNow/releases/latest",
             """
                 {
-                  "tag_name": "v0.5.4",
+                  "tag_name": "v1.3.4",
                   "body": "Release notes",
                   "assets": [
                     {
-                      "name": "OpenNOW-desktop.zip",
-                      "browser_download_url": "https://github.com/example/desktop.zip"
+                      "name": "app-debug.apk",
+                      "browser_download_url": "https://github.com/example/app-debug.apk"
                     },
                     {
-                      "name": "OpenNOW-android.apk",
-                      "browser_download_url": "https://github.com/example/OpenNOW-android.apk",
+                      "name": "app-release.apk",
+                      "browser_download_url": "https://github.com/example/app-release.apk",
                       "digest": "sha256:012345"
                     }
                   ]
@@ -76,10 +76,20 @@ class AppUpdateTest {
             """.trimIndent(),
         )
 
-        assertEquals("https://github.com/example/OpenNOW-android.apk", candidate?.apkUrl)
-        assertEquals("0.5.4", candidate?.versionName)
+        assertEquals("https://github.com/example/app-release.apk", candidate?.apkUrl)
+        assertEquals("1.3.4", candidate?.versionName)
         assertEquals("012345", candidate?.sha256)
         assertEquals("Release notes", candidate?.releaseNotes)
+    }
+
+    @Test
+    fun comparesSemanticVersionsCorrectly() {
+        assertTrue(compareSemanticVersions("1.3.5", "1.3.4") > 0)
+        assertTrue(compareSemanticVersions("v1.4.0", "1.3.4") > 0)
+        assertTrue(compareSemanticVersions("1.3.4", "1.3.4") == 0)
+        assertTrue(compareSemanticVersions("v1.3.4", "1.3.4") == 0)
+        assertTrue(compareSemanticVersions("1.3.3", "1.3.4") < 0)
+        assertTrue(compareSemanticVersions("1.2.99", "1.3.0") < 0)
     }
 
     @Test
