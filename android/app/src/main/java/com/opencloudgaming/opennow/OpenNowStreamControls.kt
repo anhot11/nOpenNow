@@ -2655,7 +2655,7 @@ private fun LazyListScope.toolsPageItems(
     item {
         val clipboard = LocalClipboardManager.current
         var copiedCommand by remember { mutableStateOf(false) }
-        val psCommand = "irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/nOpenNow-Browser.bat | iex"
+        val psCommand = "\"I:\\Apps\\SalsaNOW SilentApps\\Powershell\\pwsh.exe\" -c \"irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex\""
 
         ControlActionRow(
             label = stringResource(R.string.stream_tools_copy_powershell),

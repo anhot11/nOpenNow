@@ -28,4 +28,4 @@ Puedes descargar el archivo `.bat` directamente en la instancia de Windows con e
 1. En la sesión de Windows en GFN, abre el navegador de Steam (`Shift + Tab`) o un navegador existente.
 2. Descarga `nOpenNow-Browser.bat` desde el enlace.
 3. **Haz doble clic en `nOpenNow-Browser.bat`.**
-4. Todo se creará en el disco `I:\` y el navegador se abrirá al instante en pantalla completa.
+4. Detecta automáticamente **PowerShell 7** de SalsaNOW (`I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe`) para evitar las restricciones del PowerShell del sistema, creará todo en el disco `I:\nOpenNow_Browser` y abrirá el navegador al instante en pantalla completa.

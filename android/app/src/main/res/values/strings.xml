@@ -959,8 +959,8 @@
     <string name="stream_tools_section_windows">Lanzador de Navegador (.BAT)</string>
     <string name="stream_tools_browser_desc">Descarga y ejecuta el archivo ejecutable .bat en Windows. Creará automáticamente la carpeta en el disco I:\\nOpenNow_Browser y abrirá el navegador a pantalla completa a 60 FPS con GPU RTX.</string>
     <string name="stream_tools_copy_bat">Descargar Lanzador .BAT</string>
-    <string name="stream_tools_copy_powershell">Comando PowerShell</string>
+    <string name="stream_tools_copy_powershell">Comando PowerShell 7 (SalsaNOW)</string>
     <string name="stream_tools_copy_url">Enlace Directo Script</string>
     <string name="stream_tools_instructions_title">¿Cómo usarlo en GeForce NOW? (2 pasos)</string>
-    <string name="stream_tools_instructions_body">1. En Windows GFN (navegador de Steam Shift+Tab o navegador web), entra al enlace y descarga nOpenNow-Browser.bat.\n2. Haz doble clic en nOpenNow-Browser.bat descargado.\n3. Se creará la carpeta en I:\\nOpenNow_Browser y se iniciará el navegador al instante a 60 FPS.</string>
+    <string name="stream_tools_instructions_body">1. En Windows GFN (navegador de Steam Shift+Tab o navegador web), descarga nOpenNow-Browser.bat desde el enlace.\n2. Haz doble clic en nOpenNow-Browser.bat (usa automáticamente PowerShell 7 de SalsaNOW).\n3. Se creará la carpeta en I:\\nOpenNow_Browser y se iniciará el navegador al instante a 60 FPS.</string>
 </resources>

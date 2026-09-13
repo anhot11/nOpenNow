@@ -6,10 +6,24 @@ echo ==========================================================
 echo    nOpenNow - Windows Cloud Browser Launcher (GFN)
 echo ==========================================================
 echo.
-echo [1/3] Iniciando entorno en disco I:...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+echo [1/3] Detectando PowerShell 7 en SalsaNOW (Disco I:)...
+
+if exist "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" (
+    echo [+] Encontrado PowerShell 7: I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe
+    "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+) else (
+    where pwsh >nul 2>nul
+    if %ERRORLEVEL% EQU 0 (
+        echo [+] Encontrado pwsh en PATH...
+        pwsh -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+    ) else (
+        echo [!] pwsh.exe no encontrado en SalsaNOW, intentando con PowerShell del sistema...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText('%~f0'))"
+    )
+)
+
 if %ERRORLEVEL% NEQ 0 (
-    echo [!] Hubo un error al ejecutar PowerShell.
+    echo [!] Hubo un error al ejecutar el navegador.
     pause
 )
 exit /b
