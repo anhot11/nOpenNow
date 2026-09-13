@@ -375,14 +375,6 @@ fun OpenNowInAppBrowserDialog(
                                 textStyle = MaterialTheme.typography.bodySmall
                             )
 
-                            // Downloads Button
-                            IconButton(
-                                onClick = { downloadManagerOpen = true },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text("📥", color = Color(0xFFA6E3A1), style = MaterialTheme.typography.titleMedium)
-                            }
-
                             // 3-Dots Menu Button
                             Box {
                                 IconButton(
@@ -423,6 +415,22 @@ fun OpenNowInAppBrowserDialog(
                                         }
                                     )
 
+                                    // Download Manager
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text("📥", color = Color(0xFFA6E3A1))
+                                                Text("Descargas (Abrir en PC o Celular)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                        },
+                                        onClick = {
+                                            menuExpanded = false
+                                            downloadManagerOpen = true
+                                        }
+                                    )
                                     // Tunnel / Proxy Config
                                     DropdownMenuItem(
                                         text = {
@@ -536,7 +544,7 @@ fun OpenNowInAppBrowserDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (activeProxyHostPort != null) "🔒 Conexión enrutada por la PC (GeForce NOW: $activeProxyHostPort)" else "⚠️ Modo directo (Toca para conectar túnel de la PC)",
+                                    text = if (activeProxyHostPort != null) "🔒 Conectado por Túnel PC (GeForce NOW: $activeProxyHostPort)" else "⚠️ Túnel PC no conectado — Toca aquí para ver cómo conectar",
                                     color = if (activeProxyHostPort != null) Color(0xFFA6E3A1) else Color(0xFFF9E2AF),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
@@ -544,7 +552,7 @@ fun OpenNowInAppBrowserDialog(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    text = "Ajustes",
+                                    text = if (activeProxyHostPort != null) "Ajustes" else "Conectar",
                                     color = Color(0xFF89B4FA),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
@@ -687,6 +695,78 @@ fun OpenNowInAppBrowserDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFBAC2DE)
                     )
+
+                    if (activeProxyHostPort == null) {
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF313244)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "⚡ Cómo conectar a la PC de GeForce NOW:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF89B4FA)
+                                )
+                                Text(
+                                    text = "1. Pega este comando en la PC (SalsaNOW / PowerShell):",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White
+                                )
+                                val pcCommand = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex\""
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFF181825),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = pcCommand,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFA6E3A1),
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "2. Ejecútalo en la PC y luego pulsa 'Detectar Conexión'.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            clipboard?.setPrimaryClip(ClipData.newPlainText("Comando PC", pcCommand))
+                                            Toast.makeText(context, "¡Comando copiado al portapapeles!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                                    ) {
+                                        Text("📋 Copiar Comando", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    if (onRunCommandOnPc != null) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val launchCmd = "start \"\" \"I:\\nOpenNow_Browser\\nOpenNow-Browser.bat\" tunnel $tunnelToken"
+                                                onRunCommandOnPc(launchCmd)
+                                                Toast.makeText(context, "🚀 Comando enviado a la PC...", Toast.LENGTH_SHORT).show()
+                                                checkTunnelStatus()
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("🚀 Enviar a PC", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = manualProxyInput,

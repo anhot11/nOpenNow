@@ -18,17 +18,17 @@ APK and debug builds check `https://api.github.com/repos/anhot11/nOpenNow/releas
 
 ```json
 {
-  "tag_name": "v1.3.8",
-  "name": "nOpenNow Release v1.3.8",
+  "tag_name": "v1.3.9",
+  "name": "nOpenNow Release v1.3.9",
   "body": "Release notes...",
   "assets": [
     {
       "name": "app-release.apk",
-      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.8/app-release.apk"
+      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.9/app-release.apk"
     },
     {
       "name": "app-debug.apk",
-      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.8/app-debug.apk"
+      "browser_download_url": "https://github.com/anhot11/nOpenNow/releases/download/v1.3.9/app-debug.apk"
     }
   ]
 }
