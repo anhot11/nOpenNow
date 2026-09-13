@@ -744,6 +744,7 @@ internal fun StreamControlsPanel(
     onAutoClickerModeToggle: () -> Unit = {},
     onSendPcCommand: (String) -> Unit = {},
     onOpenKeyboard: () -> Unit = {},
+    onOpenInAppBrowser: () -> Unit = {},
     browserLowQualityEnabled: Boolean = false,
     onBrowserLowQualityToggle: () -> Unit = {},
     highlightDone: Boolean = false,
@@ -1183,6 +1184,7 @@ internal fun StreamControlsPanel(
                     onAutoClickerModeToggle = onAutoClickerModeToggle,
                     onSendPcCommand = onSendPcCommand,
                     onOpenKeyboard = onOpenKeyboard,
+                    onOpenInAppBrowser = onOpenInAppBrowser,
                     browserLowQualityEnabled = browserLowQualityEnabled,
                     onBrowserLowQualityToggle = onBrowserLowQualityToggle,
                     onButtonTone = onButtonTone,
@@ -2679,6 +2681,7 @@ private fun LazyListScope.toolsPageItems(
     onAutoClickerModeToggle: () -> Unit,
     onSendPcCommand: (String) -> Unit = {},
     onOpenKeyboard: () -> Unit = {},
+    onOpenInAppBrowser: () -> Unit = {},
     browserLowQualityEnabled: Boolean = false,
     onBrowserLowQualityToggle: () -> Unit = {},
     onButtonTone: () -> Unit,
@@ -2691,6 +2694,15 @@ private fun LazyListScope.toolsPageItems(
                 color = TextMuted,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            ControlActionRow(
+                label = "Navegador Integrado Móvil (UI Android)",
+                actionLabel = "Abrir",
+                onClick = {
+                    onButtonTone()
+                    onOpenInAppBrowser()
+                },
+                value = "Conexiones por Túnel de la PC",
             )
             ControlActionRow(
                 label = stringResource(R.string.stream_tools_start_cloud_browser),

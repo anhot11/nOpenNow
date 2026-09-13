@@ -84,6 +84,7 @@ class AppUpdateTest {
 
     @Test
     fun comparesSemanticVersionsCorrectly() {
+        assertTrue(compareSemanticVersions("1.3.8", "1.3.7") > 0)
         assertTrue(compareSemanticVersions("1.3.7", "1.3.6") > 0)
         assertTrue(compareSemanticVersions("1.3.6", "1.3.5") > 0)
         assertTrue(compareSemanticVersions("1.3.5", "1.3.4") > 0)

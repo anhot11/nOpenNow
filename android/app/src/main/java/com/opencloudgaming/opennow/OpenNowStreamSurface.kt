@@ -120,6 +120,7 @@ internal fun StreamScreen(
     var controlsOpen by remember { mutableStateOf(false) }
     var exitConfirmOpen by remember { mutableStateOf(false) }
     var keyboardOpen by remember { mutableStateOf(false) }
+    var inAppBrowserOpen by remember(session?.sessionId) { mutableStateOf(false) }
     var keyboardValue by remember(session?.sessionId) { mutableStateOf(TextFieldValue()) }
     var keyboardSyncedText by remember(session?.sessionId) { mutableStateOf<String?>(null) }
     var audioMuted by remember { mutableStateOf(false) }
@@ -1256,6 +1257,10 @@ internal fun StreamScreen(
                         controlsOpen = false
                         keyboardOpen = true
                     },
+                    onOpenInAppBrowser = {
+                        controlsOpen = false
+                        inAppBrowserOpen = true
+                    },
                     browserLowQualityEnabled = browserLowQualityEnabled,
                     onBrowserLowQualityToggle = {
                         browserLowQualityEnabled = !browserLowQualityEnabled
@@ -1330,6 +1335,20 @@ internal fun StreamScreen(
                         },
                     )
                 }
+            }
+            if (inAppBrowserOpen) {
+                OpenNowInAppBrowserDialog(
+                    onDismissRequest = { inAppBrowserOpen = false },
+                    onRunCommandOnPc = { cmd ->
+                        client.syncText(null, cmd)
+                        client.sendTextControlKey(KeyEvent.KEYCODE_ENTER)
+                    },
+                    browserLowQualityEnabled = browserLowQualityEnabled,
+                    onBrowserLowQualityToggle = {
+                        browserLowQualityEnabled = !browserLowQualityEnabled
+                    },
+                    sessionId = session?.sessionId,
+                )
             }
         }
     }
