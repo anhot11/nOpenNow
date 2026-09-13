@@ -1,0 +1,1264 @@
+package com.opencloudgaming.opennow
+
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class GfnApiTest {
+    @Test
+    fun launchOwnershipUsesCurrentAppsGraphQlContract() {
+        assertEquals("https://apps.gxn.nvidia.com/graphql", GFN_APPS_GRAPHQL_URL)
+        assertEquals(
+            "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63",
+            GFN_APP_METADATA_QUERY_HASH,
+        )
+    }
+
+    @Test
+    fun mostPopularIsTheDefaultWithoutReplacingRelevance() {
+        val options = listOf(
+            CatalogSortOption("relevance", "Relevance", "relevance-order"),
+            CatalogSortOption("last_played", "Last played", "same-order"),
+            CatalogSortOption("most_popular", "Most popular", "popular-order"),
+        )
+
+        assertEquals("most_popular", DEFAULT_CATALOG_SORT_ID)
+        assertEquals("most_popular", resolveCatalogSort(options, DEFAULT_CATALOG_SORT_ID).id)
+        assertEquals("relevance", resolveCatalogSort(options, "relevance").id)
+        assertEquals(CatalogSortKind.Relevance, catalogSortKind("relevance"))
+        assertEquals(CatalogSortKind.Popular, catalogSortKind("most_popular"))
+        assertEquals(
+            "variants.gfn.library.lastPlayedDate:DESC,sortName:ASC",
+            catalogSortOrder(options[1]),
+        )
+        assertEquals("popular-order", catalogSortOrder(options[2]))
+        assertEquals(
+            "itemMetadata.relevance:DESC,sortName:ASC",
+            catalogSortOrder(options[2].copy(orderBy = "")),
+        )
+    }
+
+    @Test
+    fun lastPlayedIsDistinctFromProviderOrderedNewGames() {
+        val newGame = GameInfo(id = "new", title = "New game")
+        val recentlyPlayed = GameInfo(id = "played", title = "Played", lastPlayed = "2026-08-23T18:00:00Z")
+        val olderPlayed = GameInfo(id = "older", title = "Older", lastPlayed = "2026-08-20T18:00:00Z")
+        val providerOrder = listOf(newGame, olderPlayed, recentlyPlayed)
+
+        assertEquals(
+            listOf("played", "older", "new"),
+            applyCatalogSortGuarantees(providerOrder, "last_played").map { it.id },
+        )
+        assertEquals(providerOrder, applyCatalogSortGuarantees(providerOrder, "last_added"))
+    }
+
+    @Test
+    fun latestAddedUsesTheAuthoritativeGfnThursdaySectionInPanelOrder() {
+        val first = GameInfo(
+            id = "first",
+            title = "First weekly game",
+            catalogSectionTitle = "GFN Thursday",
+        )
+        val stale = GameInfo(
+            id = "stale",
+            title = "Old generic-sort game",
+            catalogSectionTitle = "Featured",
+        )
+        val second = GameInfo(
+            id = "second",
+            title = "Second weekly game",
+            catalogSectionTitle = "Localized weekly title",
+            catalogSectionId = "section-cbc43218-6ad6-4ff3-8538-bc84f90c796c-468.0",
+        )
+
+        val weekly = gfnThursdayCatalogGames(listOf(first, stale, second))
+        val result = catalogResultWithGfnThursdayGames(
+            fallback = CatalogBrowseResult(
+                games = listOf(stale),
+                numberReturned = 120,
+                numberSupported = 6_000,
+                totalCount = 6_000,
+                hasNextPage = true,
+                endCursor = "cursor",
+                selectedSortId = "last_added",
+            ),
+            games = weekly,
+        )
+
+        assertEquals(listOf("first", "second"), result.games.map(GameInfo::id))
+        assertEquals(2, result.numberReturned)
+        assertEquals(2, result.numberSupported)
+        assertEquals(2, result.totalCount)
+        assertFalse(result.hasNextPage)
+        assertNull(result.endCursor)
+        assertEquals(NEWLY_ADDED_CATALOG_SORT_ID, result.selectedSortId)
+    }
+
+    @Test
+    fun latestAddedFallsBackToProviderSortWhenThursdaySectionIsUnavailable() {
+        val fallback = CatalogBrowseResult(
+            games = listOf(GameInfo(id = "fallback", title = "Fallback")),
+            selectedSortId = NEWLY_ADDED_CATALOG_SORT_ID,
+        )
+
+        assertEquals(fallback, catalogResultWithGfnThursdayGames(fallback, emptyList()))
+    }
+
+    @Test
+    fun shieldDetectionRequiresAnNvidiaShieldAndroidTv() {
+        assertTrue(isNvidiaShieldTvDevice(true, "NVIDIA", "SHIELD Android TV"))
+        assertTrue(isNvidiaShieldTvDevice(true, " nvidia ", "Nvidia Shield"))
+        assertFalse(isNvidiaShieldTvDevice(false, "NVIDIA", "SHIELD Android TV"))
+        assertFalse(isNvidiaShieldTvDevice(true, "Google", "Chromecast"))
+        assertFalse(isNvidiaShieldTvDevice(true, "NVIDIA", "Jetson"))
+    }
+
+    @Test
+    fun thirdGenerationFireTvCubeDetectionRequiresTheExactAmazonTvModel() {
+        assertTrue(isThirdGenerationFireTvCubeDevice(true, "Amazon", "AFTGAZL"))
+        assertTrue(isThirdGenerationFireTvCubeDevice(true, " amazon ", " aftgazl "))
+        assertFalse(isThirdGenerationFireTvCubeDevice(false, "Amazon", "AFTGAZL"))
+        assertFalse(isThirdGenerationFireTvCubeDevice(true, "Amazon", "AFTKA"))
+        assertFalse(isThirdGenerationFireTvCubeDevice(true, "Google", "AFTGAZL"))
+    }
+
+    @Test
+    fun desktopNativeTvAllocationIsLimitedToKnownAffectedDevices() {
+        assertTrue(usesDesktopNativeTvCloudMatchIdentity(true, "NVIDIA", "SHIELD Android TV"))
+        assertTrue(usesDesktopNativeTvCloudMatchIdentity(true, "Amazon", "AFTGAZL"))
+        assertFalse(usesDesktopNativeTvCloudMatchIdentity(true, "Amazon", "AFTKA"))
+        assertFalse(usesDesktopNativeTvCloudMatchIdentity(true, "Google", "Chromecast"))
+    }
+
+    @Test
+    fun recoveryClaimDoesNotResumeAnAlreadyReadySession() {
+        assertFalse(shouldResumeClaimedSession(status = 1, recoveryMode = false))
+        assertTrue(shouldResumeClaimedSession(status = 2, recoveryMode = false))
+        assertFalse(shouldResumeClaimedSession(status = 2, recoveryMode = true))
+        assertFalse(shouldResumeClaimedSession(status = 3, recoveryMode = true))
+        assertTrue(shouldResumeClaimedSession(status = null, recoveryMode = true))
+    }
+
+    @Test
+    fun libraryBrowseSpecUsesPanelSeeMorePaginationMetadata() {
+        val payload = buildJsonObject {
+            putJsonObject("data") {
+                putJsonArray("panels") {
+                    add(buildJsonObject {
+                        putJsonArray("sections") {
+                            add(buildJsonObject {
+                                putJsonObject("seeMoreInfo") {
+                                    put("sortOrderId", JsonPrimitive("last_played"))
+                                    putJsonArray("filterIds") {
+                                        add(JsonPrimitive("library"))
+                                        add(JsonPrimitive("owned"))
+                                    }
+                                }
+                            })
+                        }
+                    })
+                }
+            }
+        }
+
+        assertEquals(
+            LibraryBrowseSpec(listOf("library", "owned"), "last_played"),
+            libraryBrowseSpec(payload),
+        )
+    }
+
+    @Test
+    fun libraryAppsFilterRequestsEveryOwnedLibraryStatus() {
+        val variants = libraryAppsFilter().getValue("variants").jsonObject
+        val gfn = variants.getValue("gfn").jsonObject
+        val library = gfn.getValue("library").jsonObject
+        val status = library.getValue("status").jsonObject
+
+        assertEquals("NOT_OWNED", status.getValue("notEquals").jsonPrimitive.content)
+    }
+
+    @Test
+    fun freeToPlayPaymentModelUsesGraphQlTypeName() {
+        val models = buildJsonObject {
+            putJsonArray("models") {
+                add(buildJsonObject { put("__typename", JsonPrimitive("PurchasePaymentModel")) })
+                add(buildJsonObject { put("__typename", JsonPrimitive("FreeToPlayPaymentModel")) })
+            }
+        }["models"]!!.jsonArray
+
+        assertTrue(hasFreeToPlayPaymentModel(models))
+        assertFalse(hasFreeToPlayPaymentModel(null))
+    }
+
+    @Test
+    fun catalogArtworkUsesGameBoxArtForMobileAndTvCards() {
+        val artwork = catalogCardArtwork(
+            keyArt = "key-art",
+            gameBoxArt = "game-box-art",
+            heroImage = "hero-image",
+            tvBanner = "tv-banner",
+        )
+
+        assertEquals("game-box-art", artwork.mobileImageUrl)
+        assertEquals("game-box-art", artwork.tvImageUrl)
+    }
+
+    @Test
+    fun catalogArtworkDoesNotFallBackToLandscapeArtOnMobile() {
+        val artwork = catalogCardArtwork(
+            keyArt = "key-art",
+            gameBoxArt = null,
+            heroImage = "hero-image",
+            tvBanner = "tv-banner",
+        )
+
+        assertNull(artwork.mobileImageUrl)
+        assertEquals("key-art", artwork.tvImageUrl)
+    }
+
+    @Test
+    fun catalogScreenshotsPreserveDistinctNonBlankImages() {
+        val images = buildJsonObject {
+            putJsonArray("SCREENSHOTS") {
+                add(JsonPrimitive(" screenshot-one "))
+                add(JsonPrimitive(""))
+                add(JsonPrimitive("screenshot-two"))
+                add(JsonPrimitive("screenshot-one"))
+            }
+        }
+
+        assertEquals(
+            listOf("screenshot-one", "screenshot-two"),
+            catalogScreenshotUrls(images),
+        )
+    }
+
+    @Test
+    fun catalogDescriptionSupportsBrowseAndMetadataFieldNames() {
+        val browseApp = buildJsonObject {
+            put("shortDescription", JsonPrimitive("Browse description"))
+        }
+        val metadataApp = buildJsonObject {
+            put("description", JsonPrimitive("Metadata description"))
+            put("shortDescription", JsonPrimitive("Fallback description"))
+        }
+
+        assertEquals("Browse description", catalogGameDescription(browseApp))
+        assertEquals("Metadata description", catalogGameDescription(metadataApp))
+    }
+
+    @Test
+    fun appStoreEnumSerializationFailureIsRecognizedForFallback() {
+        val error = IllegalStateException(
+            "GFN GraphQL failed (400): {\"errors\":[{\"message\":\"Enum 'AppStoreEnum' cannot represent value: 'NCSOFT'\"}]}",
+        )
+
+        assertTrue(isAppStoreEnumSerializationError(error))
+        assertFalse(isAppStoreEnumSerializationError(IllegalStateException("GFN GraphQL failed (500)")))
+    }
+
+    @Test
+    fun variantStorePrefersGraphQlValueAndInfersEnumFreeMetadata() {
+        val explicit = buildJsonObject {
+            put("appStore", JsonPrimitive("STEAM"))
+            put("storeUrl", JsonPrimitive("https://www.epicgames.com/store/p/example"))
+        }
+        val epic = buildJsonObject {
+            put("storeUrl", JsonPrimitive("https://www.epicgames.com/store/p/example"))
+        }
+        val ncsoft = buildJsonObject {
+            put("shortName", JsonPrimitive("guild_wars_2_gfn_pc"))
+            put("storeUrl", JsonPrimitive("https://www.guildwars2.com/?utm_source=nvidia"))
+            put("publisherName", JsonPrimitive("NCsoft Corp."))
+        }
+
+        assertEquals("STEAM", gameStoreFromVariant(explicit))
+        assertEquals("EPIC", gameStoreFromVariant(epic))
+        assertEquals("NCSOFT", gameStoreFromVariant(ncsoft))
+    }
+
+    @Test
+    fun enumFreeVariantFieldsRetainStoreInferenceMetadata() {
+        val primaryFields = gfnVariantMetadataFields(includeAppStore = true)
+        val fallbackFields = gfnVariantMetadataFields(includeAppStore = false)
+
+        assertTrue(primaryFields.lineSequence().any { it.trim() == "appStore" })
+        assertFalse(fallbackFields.lineSequence().any { it.trim() == "appStore" })
+        assertTrue(fallbackFields.contains("shortName"))
+        assertTrue(fallbackFields.contains("storeUrl"))
+        assertTrue(fallbackFields.contains("publisherName"))
+    }
+
+    @Test
+    fun canonicalizesOldGamesGraphQlHost() {
+        val url = canonicalizeGfnRequestUrl(
+            "https://games.geforcenow.com/graphql?requestType=panels%2FMainV2".toHttpUrl(),
+        )
+
+        assertEquals("https", url.scheme)
+        assertEquals("games.geforce.com", url.host)
+        assertEquals("/graphql", url.encodedPath)
+        assertEquals("panels/MainV2", url.queryParameter("requestType"))
+    }
+
+    @Test
+    fun leavesCanonicalGamesGraphQlHostUnchanged() {
+        val source = "https://games.geforce.com/graphql".toHttpUrl()
+
+        assertEquals(source, canonicalizeGfnRequestUrl(source))
+    }
+
+    @Test
+    fun claimRequestWithoutSettingsDoesNotRenegotiateMonitorSettings() {
+        val body = buildMinimalClaimRequestBody(appId = "123", deviceId = "device")
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val metadata = sessionRequestData.getValue("metaData").jsonArray
+
+        assertEquals(2, body.getValue("action").jsonPrimitive.int)
+        assertEquals(123, sessionRequestData.getValue("appId").jsonPrimitive.int)
+        assertFalse(sessionRequestData.containsKey("clientRequestMonitorSettings"))
+        assertFalse(sessionRequestData.containsKey("requestedStreamingFeatures"))
+        assertTrue(metadata.none { item ->
+            item.jsonObject["key"]?.jsonPrimitive?.contentOrNull == "clientPhysicalResolution"
+        })
+    }
+
+    @Test
+    fun claimRequestCarriesCommonResolutionAspectAndCodecMatrix() {
+        val cases = STREAM_RESOLUTION_OPTIONS.map { option ->
+            Triple(option.value, option.aspectRatio, parseResolutionPixels(option.value))
+        }
+
+        for ((resolution, aspectRatio, pixels) in cases) {
+            for (codec in VideoCodec.entries) {
+                val settings = StreamSettings(
+                    resolution = resolution,
+                    aspectRatio = aspectRatio,
+                    fps = 60,
+                    maxBitrateMbps = 75,
+                    codec = codec,
+                    colorQuality = if (codec == VideoCodec.H264) ColorQuality.EightBit420 else ColorQuality.TenBit420,
+                )
+                val body = buildMinimalClaimRequestBody(appId = "123", deviceId = "device", settings = settings)
+                val nativeDesktopMode = settings.requiresNativeDesktopCloudMatchMode()
+                val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+                val metadata = sessionRequestData.getValue("metaData").jsonArray
+                val monitor = sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+                val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+                val signature = metadata.firstNotNullOfOrNull { item ->
+                    item.jsonObject.takeIf {
+                        it["key"]?.jsonPrimitive?.contentOrNull == OPENNOW_STREAM_SETTINGS_METADATA_KEY
+                    }?.get("value")?.jsonPrimitive?.contentOrNull
+                }
+                val physicalResolution = metadata.firstNotNullOfOrNull { item ->
+                    item.jsonObject.takeIf {
+                        it["key"]?.jsonPrimitive?.contentOrNull == "clientPhysicalResolution"
+                    }?.get("value")?.jsonPrimitive?.contentOrNull
+                }?.let { OpenNowJson.parseToJsonElement(it).jsonObject }
+
+                assertEquals("$resolution $codec signature", streamSettingsSessionSignature(settings), signature)
+                assertEquals("$resolution $codec width", pixels.first, monitor.getValue("widthInPixels").jsonPrimitive.int)
+                assertEquals("$resolution $codec height", pixels.second, monitor.getValue("heightInPixels").jsonPrimitive.int)
+                assertEquals("$resolution $codec fps", 60, monitor.getValue("framesPerSecond").jsonPrimitive.int)
+                assertEquals("$resolution $codec bit depth", if (codec == VideoCodec.H265) 10 else 0, features.getValue("bitDepth").jsonPrimitive.int)
+                assertEquals(false, features.getValue("reflex").jsonPrimitive.boolean)
+                assertEquals(nativeDesktopMode, monitor.containsKey("monitorId"))
+                assertEquals(nativeDesktopMode, monitor.containsKey("positionX"))
+                assertEquals(nativeDesktopMode, monitor.containsKey("positionY"))
+                assertEquals(if (nativeDesktopMode) 100 else 0, monitor.getValue("dpi").jsonPrimitive.int)
+                assertEquals(pixels.first, physicalResolution?.getValue("horizontalPixels")?.jsonPrimitive?.int)
+                assertEquals(pixels.second, physicalResolution?.getValue("verticalPixels")?.jsonPrimitive?.int)
+            }
+        }
+    }
+
+    @Test
+    fun ultrawideMetadataKeepsPhysicalDisplaySeparateFromStreamResolution() {
+        val settings = StreamSettings(
+            resolution = "1680x720",
+            aspectRatio = "21:9",
+            fps = 60,
+            codec = VideoCodec.H264,
+            colorQuality = ColorQuality.EightBit420,
+        )
+
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            physicalDisplayResolution = 1920 to 1080,
+            streamingBaseUrl = "https://np-bom-01.cloudmatchbeta.nvidiagrid.net",
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray
+            .single().jsonObject
+        val physicalResolution = sessionRequestData
+            .getValue("metaData").jsonArray
+            .firstNotNullOf { item ->
+                item.jsonObject.takeIf {
+                    it["key"]?.jsonPrimitive?.contentOrNull == "clientPhysicalResolution"
+                }?.get("value")?.jsonPrimitive?.contentOrNull
+            }
+            .let { OpenNowJson.parseToJsonElement(it).jsonObject }
+
+        assertEquals(1680, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(720, monitor.getValue("heightInPixels").jsonPrimitive.int)
+        assertEquals(0, monitor.getValue("dpi").jsonPrimitive.int)
+        assertFalse(monitor.containsKey("monitorId"))
+        assertFalse(monitor.containsKey("positionX"))
+        assertFalse(monitor.containsKey("positionY"))
+        assertEquals(JsonNull, monitor.getValue("displayData"))
+        assertEquals(JsonNull, monitor.getValue("hdr10PlusGamingData"))
+        assertEquals("browser", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(2, sessionRequestData.getValue("appLaunchMode").jsonPrimitive.int)
+        assertEquals(false, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(1920, physicalResolution.getValue("horizontalPixels").jsonPrimitive.int)
+        assertEquals(1080, physicalResolution.getValue("verticalPixels").jsonPrimitive.int)
+    }
+
+    @Test
+    fun larger4kPanelRemainsPhysicalMetadataForRequested1440pViewport() {
+        val settings = StreamSettings(
+            resolution = "2560x1440",
+            aspectRatio = "16:9",
+            fps = 120,
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.TenBit420,
+        )
+
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            physicalDisplayResolution = 3840 to 2160,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val physicalResolution = sessionRequestData
+            .getValue("metaData").jsonArray
+            .firstNotNullOf { item ->
+                item.jsonObject.takeIf {
+                    it["key"]?.jsonPrimitive?.contentOrNull == "clientPhysicalResolution"
+                }?.get("value")?.jsonPrimitive?.contentOrNull
+            }
+            .let { OpenNowJson.parseToJsonElement(it).jsonObject }
+
+        assertEquals(3840, physicalResolution.getValue("horizontalPixels").jsonPrimitive.int)
+        assertEquals(2160, physicalResolution.getValue("verticalPixels").jsonPrimitive.int)
+    }
+
+    @Test
+    fun sessionMonitorSnapshotKeepsRequestedReturnedAndFinalModesSeparate() {
+        val session = buildJsonObject {
+            putJsonObject("sessionRequestData") {
+                putJsonArray("clientRequestMonitorSettings") {
+                    add(buildJsonObject {
+                        put("widthInPixels", JsonPrimitive(1680))
+                        put("heightInPixels", JsonPrimitive(720))
+                        put("framesPerSecond", JsonPrimitive(60))
+                    })
+                }
+            }
+            putJsonArray("monitorSettings") {
+                add(buildJsonObject {
+                    put("widthInPixels", JsonPrimitive(1366))
+                    put("heightInPixels", JsonPrimitive(768))
+                    put("framesPerSecond", JsonPrimitive(60))
+                })
+            }
+            putJsonObject("finalSelectedScreenResolution") {
+                put("horizontalPixels", JsonPrimitive(1230))
+                put("verticalPixels", JsonPrimitive(768))
+            }
+        }
+
+        val snapshot = extractSessionMonitorSnapshot(session)
+
+        assertEquals("1680x720", snapshot?.requestedResolution)
+        assertEquals(60, snapshot?.requestedFps)
+        assertEquals("1366x768", snapshot?.returnedResolution)
+        assertEquals(60, snapshot?.returnedFps)
+        assertEquals("1230x768", snapshot?.finalSelectedResolution)
+    }
+
+    @Test
+    fun sessionMonitorSnapshotAcceptsStringFinalResolutionWithoutReplacingReturnedMode() {
+        val session = buildJsonObject {
+            putJsonArray("monitorSettings") {
+                add(buildJsonObject {
+                    put("widthInPixels", JsonPrimitive(2560))
+                    put("heightInPixels", JsonPrimitive(1440))
+                })
+            }
+            put("finalSelectedScreenResolution", JsonPrimitive("1920x1080"))
+        }
+
+        val snapshot = extractSessionMonitorSnapshot(session)
+
+        assertEquals("2560x1440", snapshot?.returnedResolution)
+        assertEquals("1920x1080", snapshot?.finalSelectedResolution)
+    }
+
+    @Test
+    fun nvidiaCloudMatchUsesBrowserAndroidClientIdentity() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://np-bom-01.cloudmatchbeta.nvidiagrid.net",
+        )
+
+        assertEquals("WEBRTC", headers["nv-client-streamer"])
+        assertEquals("BROWSER", headers["nv-client-type"])
+        assertEquals("2.0.86.124", headers["nv-client-version"])
+        assertEquals("ANDROID", headers["nv-device-os"])
+        assertEquals("PHONE", headers["nv-device-type"])
+        assertTrue(headers["User-Agent"].orEmpty().contains("Android"))
+        assertEquals("https://play.geforcenow.com", headers["Origin"])
+    }
+
+    @Test
+    fun cloudMatchSessionRequestCarriesArabicAndPortugueseLocales() {
+        val base = "https://np-ams-06.cloudmatchbeta.nvidiagrid.net"
+        val arabicUrl = cloudMatchSessionRequestUrl(
+            base,
+            StreamSettings(keyboardLayout = "ar-SA", gameLanguage = "ar_SA"),
+        )
+        val portugueseUrl = cloudMatchSessionRequestUrl(
+            base,
+            StreamSettings(keyboardLayout = "pt-PT", gameLanguage = "pt_PT"),
+            sessionId = "session 1",
+        )
+
+        assertTrue(arabicUrl.contains("keyboardLayout=ar-SA"))
+        assertTrue(arabicUrl.contains("languageCode=ar_SA"))
+        assertTrue(portugueseUrl.contains("/v2/session/session+1?"))
+        assertTrue(portugueseUrl.contains("keyboardLayout=pt-PT"))
+        assertTrue(portugueseUrl.contains("languageCode=pt_PT"))
+    }
+
+    @Test
+    fun androidAppLocalesMapToCloudMatchCatalogLocales() {
+        assertEquals("ar_SA", gfnLocaleForAndroidLanguageTag("ar"))
+        assertEquals("fr_FR", gfnLocaleForAndroidLanguageTag("fr-CA"))
+        assertEquals("pt_PT", gfnLocaleForAndroidLanguageTag("pt"))
+        assertEquals("pt_BR", gfnLocaleForAndroidLanguageTag("pt-BR"))
+        assertEquals("zh_CN", gfnLocaleForAndroidLanguageTag("zh-Hans"))
+        assertEquals("en_US", gfnLocaleForAndroidLanguageTag("unsupported"))
+    }
+
+    @Test
+    fun nvidiaHighPerformanceGamepadLaunchUsesNativeDesktopIdentity() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://np-pdx-01.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            preferNativeDesktopMode = true,
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("WINDOWS", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        assertTrue(headers["User-Agent"].orEmpty().contains("Linux; Android"))
+    }
+
+    @Test
+    fun allianceCloudMatchKeepsDesktopNativeClientIdentity() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://my-yes.yes.geforcenow.nvidiagrid.net",
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("WINDOWS", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        assertTrue(headers["User-Agent"].orEmpty().contains("GFN-PC/22.0"))
+        assertTrue(headers["User-Agent"].orEmpty().contains("Android"))
+        assertEquals("https://play.geforcenow.com", headers["Origin"])
+    }
+
+    @Test
+    fun cloudMatchUsesNativeAndroidTouchIdentityForTouchFriendly() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            appLaunchMode = GfnAppLaunchMode.TOUCH_FRIENDLY,
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("ANDROID", headers["nv-device-os"])
+        assertEquals("TABLET", headers["nv-device-type"])
+        val userAgent = headers["User-Agent"].orEmpty()
+        assertTrue(userAgent.contains("Android-Generic-Touch"))
+        assertEquals("https://play.geforcenow.com", headers["Origin"])
+    }
+
+    @Test
+    fun cloudMatchUsesAndroidTvIdentityForTvProfile() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            isAndroidTv = true,
+        )
+
+        assertEquals("WEBRTC", headers["nv-client-streamer"])
+        assertEquals("BROWSER", headers["nv-client-type"])
+        assertEquals("ANDROID", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        val userAgent = headers["User-Agent"].orEmpty()
+        assertTrue(userAgent.contains("Android-Generic-TV"))
+        assertEquals("https://play.geforcenow.com", headers["Origin"])
+    }
+
+    @Test
+    fun cloudMatchUsesDesktopNativeIdentityForHighQualityShieldProfile() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://np-sth-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            preferNativeDesktopMode = true,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = true,
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("WINDOWS", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        assertTrue(headers["User-Agent"].orEmpty().contains("Linux; Android"))
+        assertFalse(headers["User-Agent"].orEmpty().contains("Android-Generic-TV"))
+    }
+
+    @Test
+    fun cloudMatchUsesDesktopNativeIdentityForHighQualityFireTvCubeProfile() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://np-mia-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            preferNativeDesktopMode = true,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = usesDesktopNativeTvCloudMatchIdentity(true, "Amazon", "AFTGAZL"),
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("WINDOWS", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        assertFalse(headers["User-Agent"].orEmpty().contains("Android-Generic-TV"))
+    }
+
+    @Test
+    fun cloudMatchKeepsAndroidNativeIdentityForOtherHighQualityTvProfiles() {
+        val headers = cloudMatchHeaders(
+            token = "token",
+            clientId = "client",
+            deviceId = "device",
+            includeOrigin = true,
+            streamingBaseUrl = "https://np-sth-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            preferNativeDesktopMode = true,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = false,
+        )
+
+        assertEquals("NVIDIA-CLASSIC", headers["nv-client-streamer"])
+        assertEquals("NATIVE", headers["nv-client-type"])
+        assertEquals("ANDROID", headers["nv-device-os"])
+        assertEquals("DESKTOP", headers["nv-device-type"])
+        assertTrue(headers["User-Agent"].orEmpty().contains("Android-Generic-TV"))
+    }
+
+    @Test
+    fun allianceClaimKeepsDesktopMonitorDescriptor() {
+        val settings = StreamSettings(
+            resolution = "1680x720",
+            aspectRatio = "21:9",
+            fps = 60,
+            codec = VideoCodec.H264,
+            colorQuality = ColorQuality.EightBit420,
+        )
+
+        val sessionRequestData = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            streamingBaseUrl = "https://my-yes.yes.geforcenow.nvidiagrid.net",
+        ).getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray
+            .single().jsonObject
+
+        assertEquals("windows", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(GfnAppLaunchMode.GAMEPAD_FRIENDLY, sessionRequestData.getValue("appLaunchMode").jsonPrimitive.int)
+        assertEquals(true, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(0, monitor.getValue("monitorId").jsonPrimitive.int)
+        assertEquals(0, monitor.getValue("positionX").jsonPrimitive.int)
+        assertEquals(0, monitor.getValue("positionY").jsonPrimitive.int)
+        assertEquals(100, monitor.getValue("dpi").jsonPrimitive.int)
+    }
+
+    @Test
+    fun physicalResolutionMetadataDoesNotUndercutRequested1440pStream() {
+        val settings = StreamSettings(
+            resolution = "2560x1440",
+            aspectRatio = "16:9",
+            fps = 60,
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.TenBit420,
+            hdrEnabled = true,
+        )
+
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            physicalDisplayResolution = 1920 to 1080,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray
+            .single().jsonObject
+        val physicalResolution = sessionRequestData
+            .getValue("metaData").jsonArray
+            .firstNotNullOf { item ->
+                item.jsonObject.takeIf {
+                    it["key"]?.jsonPrimitive?.contentOrNull == "clientPhysicalResolution"
+                }?.get("value")?.jsonPrimitive?.contentOrNull
+            }
+            .let { OpenNowJson.parseToJsonElement(it).jsonObject }
+
+        assertEquals(2560, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(1440, monitor.getValue("heightInPixels").jsonPrimitive.int)
+        assertEquals(2560, physicalResolution.getValue("horizontalPixels").jsonPrimitive.int)
+        assertEquals(1440, physicalResolution.getValue("verticalPixels").jsonPrimitive.int)
+    }
+
+    @Test
+    fun claimRequestExplicitlyMarksSdrColorMetadata() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.EightBit420,
+            hdrEnabled = false,
+        )
+
+        val sessionRequestData = buildMinimalClaimRequestBody("123", "device", settings)
+            .getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+        val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+
+        assertEquals(0, monitor.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertEquals(JsonNull, monitor.getValue("displayData"))
+        assertEquals(JsonNull, monitor.getValue("hdr10PlusGamingData"))
+        assertEquals(0, features.getValue("bitDepth").jsonPrimitive.int)
+        assertEquals(false, features.getValue("trueHdr").jsonPrimitive.boolean)
+        assertEquals(2, features.getValue("sdrColorSpace").jsonPrimitive.int)
+        assertEquals(0, features.getValue("hdrColorSpace").jsonPrimitive.int)
+        assertEquals(0, sessionRequestData.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertEquals(JsonNull, sessionRequestData.getValue("clientDisplayHdrCapabilities"))
+    }
+
+    @Test
+    fun claimRequestExplicitlyMarksHdrColorMetadata() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.TenBit420,
+            hdrEnabled = true,
+            hdrDisplay = HdrDisplayProfile(650f, 0.005f, 280f),
+        )
+
+        val sessionRequestData = buildMinimalClaimRequestBody("123", "device", settings)
+            .getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+        val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+
+        assertEquals(1, monitor.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertEquals(650f, monitor.getValue("displayData").jsonObject
+            .getValue("desiredContentMaxLuminance").jsonPrimitive.float)
+        assertEquals(0.005f, monitor.getValue("displayData").jsonObject
+            .getValue("desiredContentMinLuminance").jsonPrimitive.float)
+        assertEquals(280f, monitor.getValue("displayData").jsonObject
+            .getValue("desiredContentMaxFrameAverageLuminance").jsonPrimitive.float)
+        assertEquals(true, features.getValue("trueHdr").jsonPrimitive.boolean)
+        assertEquals(10, features.getValue("bitDepth").jsonPrimitive.int)
+        assertEquals(2, features.getValue("sdrColorSpace").jsonPrimitive.int)
+        assertEquals(4, features.getValue("hdrColorSpace").jsonPrimitive.int)
+        assertEquals(1, sessionRequestData.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertTrue(sessionRequestData.getValue("clientDisplayHdrCapabilities") is kotlinx.serialization.json.JsonObject)
+    }
+
+    @Test
+    fun claimRequestCarriesRequested120FpsMonitorSetting() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            aspectRatio = "16:9",
+            fps = 120,
+            maxBitrateMbps = 75,
+            codec = VideoCodec.H264,
+            colorQuality = ColorQuality.EightBit420,
+        )
+
+        val body = buildMinimalClaimRequestBody(appId = "123", deviceId = "device", settings = settings)
+        val monitor = body
+            .getValue("sessionRequestData").jsonObject
+            .getValue("clientRequestMonitorSettings").jsonArray
+            .single().jsonObject
+
+        assertEquals(120, monitor.getValue("framesPerSecond").jsonPrimitive.int)
+        assertEquals(
+            true,
+            body.getValue("sessionRequestData").jsonObject
+                .getValue("requestedStreamingFeatures").jsonObject
+                .getValue("reflex").jsonPrimitive.boolean,
+        )
+    }
+
+    @Test
+    fun claimRequestCarriesRequested360FpsMonitorSetting() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            aspectRatio = "16:9",
+            fps = 360,
+            maxBitrateMbps = 75,
+            codec = VideoCodec.AV1,
+            colorQuality = ColorQuality.EightBit420,
+        )
+
+        val body = buildMinimalClaimRequestBody(appId = "123", deviceId = "device", settings = settings)
+        val monitor = body
+            .getValue("sessionRequestData").jsonObject
+            .getValue("clientRequestMonitorSettings").jsonArray
+            .single().jsonObject
+
+        assertEquals(360, monitor.getValue("framesPerSecond").jsonPrimitive.int)
+    }
+
+    @Test
+    fun claimRequestDoesNotAdvertiseAv1Chroma444() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            aspectRatio = "16:9",
+            fps = 60,
+            codec = VideoCodec.AV1,
+            colorQuality = ColorQuality.EightBit444,
+        )
+
+        val body = buildMinimalClaimRequestBody(appId = "123", deviceId = "device", settings = settings)
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+        val signature = sessionRequestData.getValue("metaData").jsonArray.firstNotNullOfOrNull { item ->
+            item.jsonObject.takeIf {
+                it["key"]?.jsonPrimitive?.contentOrNull == OPENNOW_STREAM_SETTINGS_METADATA_KEY
+            }?.get("value")?.jsonPrimitive?.contentOrNull
+        }
+
+        assertEquals(0, features.getValue("chromaFormat").jsonPrimitive.int)
+        assertTrue(signature?.contains("color=EightBit420") == true)
+    }
+
+    @Test
+    fun claimRequestDoesNotAdvertiseAv1TenBitOrHdr() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            codec = VideoCodec.AV1,
+            colorQuality = ColorQuality.TenBit420,
+            hdrEnabled = true,
+        )
+
+        val sessionRequestData = buildMinimalClaimRequestBody("123", "device", settings)
+            .getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData
+            .getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+        val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+        val signature = sessionRequestData.getValue("metaData").jsonArray.firstNotNullOfOrNull { item ->
+            item.jsonObject.takeIf {
+                it["key"]?.jsonPrimitive?.contentOrNull == OPENNOW_STREAM_SETTINGS_METADATA_KEY
+            }?.get("value")?.jsonPrimitive?.contentOrNull
+        }
+
+        assertEquals(0, monitor.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertEquals(JsonNull, monitor.getValue("displayData"))
+        assertEquals(0, features.getValue("bitDepth").jsonPrimitive.int)
+        assertEquals(false, features.getValue("trueHdr").jsonPrimitive.boolean)
+        assertEquals(0, features.getValue("hdrColorSpace").jsonPrimitive.int)
+        assertEquals(JsonNull, sessionRequestData.getValue("clientDisplayHdrCapabilities"))
+        assertTrue(signature?.contains("codec=AV1;color=EightBit420;hdr=0") == true)
+    }
+
+    @Test
+    fun activeSessionMonitorSettingsPreferActualTopLevelMonitor() {
+        val session = OpenNowJson.parseToJsonElement(
+            """
+            {
+              "sessionRequestData": {
+                "clientRequestMonitorSettings": [
+                  { "widthInPixels": 1680, "heightInPixels": 720, "framesPerSecond": 60 }
+                ]
+              },
+              "monitorSettings": [
+                { "widthInPixels": 1366, "heightInPixels": 768, "framesPerSecond": 60 }
+              ]
+            }
+            """.trimIndent(),
+        ).jsonObject
+        val monitor = requireNotNull(activeSessionMonitorSettings(session))
+
+        assertEquals(1366, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(768, monitor.getValue("heightInPixels").jsonPrimitive.int)
+    }
+
+    @Test
+    fun activeSessionMonitorSettingsFallsBackToTopLevelMonitor() {
+        val session = OpenNowJson.parseToJsonElement(
+            """
+            {
+              "monitorSettings": [
+                { "widthInPixels": 1366, "heightInPixels": 768, "framesPerSecond": 60 }
+              ]
+            }
+            """.trimIndent(),
+        ).jsonObject
+        val monitor = requireNotNull(activeSessionMonitorSettings(session))
+
+        assertEquals(1366, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(768, monitor.getValue("heightInPixels").jsonPrimitive.int)
+    }
+
+    @Test
+    fun activeSessionSettingsSignatureReadsSessionRequestMetadata() {
+        val settings = StreamSettings(resolution = "1680x720", aspectRatio = "21:9", fps = 60, maxBitrateMbps = 150, codec = VideoCodec.H265)
+        val signature = streamSettingsSessionSignature(settings)
+        val session = OpenNowJson.parseToJsonElement(
+            """
+            {
+              "sessionRequestData": {
+                "metaData": [
+                  { "key": "$OPENNOW_STREAM_SETTINGS_METADATA_KEY", "value": "$signature" }
+                ]
+              }
+            }
+            """.trimIndent(),
+        ).jsonObject
+
+        assertEquals(signature, activeSessionSettingsSignature(session))
+    }
+
+    @Test
+    fun providerLaunchBaseUsesSingleAdvertisedAllianceRegion() {
+        val base = providerLaunchBaseUrl(
+            providerBase = "https://prod.yes.geforcenow.nvidiagrid.net/",
+            regions = listOf(StreamRegion("MY YES", "https://my-yes.yes.geforcenow.nvidiagrid.net")),
+        )
+
+        assertEquals("https://my-yes.yes.geforcenow.nvidiagrid.net", base)
+    }
+
+    @Test
+    fun providerLaunchBaseDoesNotGuessWhenProviderHasMultipleRegions() {
+        val base = providerLaunchBaseUrl(
+            providerBase = "https://prod.example.geforcenow.nvidiagrid.net/",
+            regions = listOf(
+                StreamRegion("A", "https://a.example.geforcenow.nvidiagrid.net"),
+                StreamRegion("B", "https://b.example.geforcenow.nvidiagrid.net"),
+            ),
+        )
+
+        assertEquals("https://prod.example.geforcenow.nvidiagrid.net", base)
+    }
+
+    @Test
+    fun providerLaunchBaseDoesNotRewriteCloudmatchRoot() {
+        val base = providerLaunchBaseUrl(
+            providerBase = "https://prod.cloudmatchbeta.nvidiagrid.net/",
+            regions = listOf(StreamRegion("NP-AMS-06", "https://np-ams-06.cloudmatchbeta.nvidiagrid.net")),
+        )
+
+        assertEquals("https://prod.cloudmatchbeta.nvidiagrid.net", base)
+    }
+
+    @Test
+    fun usableSessionHostRejectsPlaceholderAllianceHosts() {
+        assertNull(usableSessionHost(".yes.geforcenow.nvidiagrid.net"))
+        assertNull(usableSessionHost("bad..host"))
+        assertEquals("183-78-14-238.yes.geforcenow.nvidiagrid.net", usableSessionHost("183-78-14-238.yes.geforcenow.nvidiagrid.net"))
+    }
+
+    @Test
+    fun diagnosticLogPayloadRedactsSensitiveJsonFields() {
+        val exported = sanitizeDiagnosticLogPayload(
+            """
+            {
+              "session": {
+                "sessionId": "session-123",
+                "queuePosition": 4,
+                "iceServerConfiguration": {
+                  "iceServers": [
+                    {
+                      "urls": ["turn:example.invalid"],
+                      "username": "ice-user",
+                      "credential": "ice-secret"
+                    }
+                  ]
+                }
+              },
+              "accessToken": "token-value",
+              "email": "player@example.invalid"
+            }
+            """.trimIndent(),
+        )
+
+        assertTrue(exported.contains("\"sessionId\": \"session-123\""))
+        assertTrue(exported.contains("\"queuePosition\": 4"))
+        assertFalse(exported.contains("ice-secret"))
+        assertFalse(exported.contains("token-value"))
+        assertFalse(exported.contains("player@example.invalid"))
+        assertTrue(exported.contains("\"credential\": \"[redacted]\""))
+        assertTrue(exported.contains("\"accessToken\": \"[redacted]\""))
+    }
+
+    @Test
+    fun diagnosticLogPayloadRedactsDeviceLoginAndDeviceIds() {
+        val exported = sanitizeDiagnosticLogPayload(
+            """
+            {
+              "device_code": "device-secret",
+              "user_code": "ABCD-EFGH",
+              "verification_uri_complete": "https://login.example/activate?user_code=ABCD-EFGH",
+              "deviceHashId": "stable-device-id",
+              "statusCode": 1
+            }
+            """.trimIndent(),
+        )
+
+        assertFalse(exported.contains("device-secret"))
+        assertFalse(exported.contains("ABCD-EFGH"))
+        assertFalse(exported.contains("stable-device-id"))
+        assertTrue(exported.contains("\"device_code\": \"[redacted]\""))
+        assertTrue(exported.contains("\"user_code\": \"[redacted]\""))
+        assertTrue(exported.contains("\"deviceHashId\": \"[redacted]\""))
+        assertTrue(exported.contains("\"statusCode\": 1"))
+    }
+
+    @Test
+    fun diagnosticUrlRedactsSensitiveQueryParameters() {
+        val exported = redactDiagnosticUrl("https://login.example/token?code=abc123&device_id=device-1&requestType=session")
+
+        assertFalse(exported.contains("abc123"))
+        assertFalse(exported.contains("device-1"))
+        assertTrue(exported.contains("code=%5Bredacted%5D"))
+        assertTrue(exported.contains("device_id=%5Bredacted%5D"))
+        assertTrue(exported.contains("requestType=session"))
+    }
+
+    @Test
+    fun diagnosticLogPayloadRedactsFormEncodedAuthFields() {
+        val exported = sanitizeDiagnosticLogPayload(
+            "grant_type=client_token&client_token=client-secret&client_id=public-client&sub=user-123",
+        )
+
+        assertFalse(exported.contains("client-secret"))
+        assertFalse(exported.contains("user-123"))
+        assertTrue(exported.contains("client_token=[redacted]"))
+        assertTrue(exported.contains("sub=[redacted]"))
+        assertTrue(exported.contains("client_id=public-client"))
+    }
+
+    @Test
+    fun touchFriendlyClaimRequestUsesAndroidPlatformIdentity() {
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            appLaunchMode = GfnAppLaunchMode.TOUCH_FRIENDLY,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+
+        assertEquals("android", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(GfnAppLaunchMode.TOUCH_FRIENDLY, sessionRequestData.getValue("appLaunchMode").jsonPrimitive.int)
+    }
+
+    @Test
+    fun gamepadFriendlyClaimRequestKeepsBrowserPlatformIdentity() {
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        assertEquals("browser", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(GfnAppLaunchMode.GAMEPAD_FRIENDLY, sessionRequestData.getValue("appLaunchMode").jsonPrimitive.int)
+    }
+
+    @Test
+    fun highPerformanceGamepadClaimUsesNativeDesktopPlatformIdentity() {
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = StreamSettings(resolution = "2560x1440", fps = 120),
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+
+        assertEquals("windows", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(true, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(100, sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject.getValue("dpi").jsonPrimitive.int)
+    }
+
+    @Test
+    fun shieldFourKHdrClaimUsesDesktopAllocationAndPreservesRequestedProfile() {
+        val settings = StreamSettings(
+            resolution = "3840x2160",
+            aspectRatio = "16:9",
+            fps = 60,
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.TenBit420,
+            hdrEnabled = true,
+        )
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            physicalDisplayResolution = 3840 to 2160,
+            streamingBaseUrl = "https://np-sth-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = true,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+        val features = sessionRequestData.getValue("requestedStreamingFeatures").jsonObject
+
+        assertEquals("windows", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(true, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(3840, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(2160, monitor.getValue("heightInPixels").jsonPrimitive.int)
+        assertEquals(60, monitor.getValue("framesPerSecond").jsonPrimitive.int)
+        assertEquals(1, monitor.getValue("sdrHdrMode").jsonPrimitive.int)
+        assertEquals(0, monitor.getValue("monitorId").jsonPrimitive.int)
+        assertEquals(100, monitor.getValue("dpi").jsonPrimitive.int)
+        assertEquals(10, features.getValue("bitDepth").jsonPrimitive.int)
+        assertEquals(true, features.getValue("trueHdr").jsonPrimitive.boolean)
+        assertEquals(4, features.getValue("hdrColorSpace").jsonPrimitive.int)
+    }
+
+    @Test
+    fun fireTvCube1440pClaimUsesDesktopAllocationAndPreservesRequestedProfile() {
+        val sessionRequestData = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = StreamSettings(
+                resolution = "2560x1440",
+                aspectRatio = "16:9",
+                fps = 60,
+                codec = VideoCodec.H265,
+                maxBitrateMbps = 75,
+            ),
+            physicalDisplayResolution = 1920 to 1080,
+            streamingBaseUrl = "https://np-mia-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = usesDesktopNativeTvCloudMatchIdentity(true, "Amazon", "AFTGAZL"),
+        ).getValue("sessionRequestData").jsonObject
+        val monitor = sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject
+
+        assertEquals("windows", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(true, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(2560, monitor.getValue("widthInPixels").jsonPrimitive.int)
+        assertEquals(1440, monitor.getValue("heightInPixels").jsonPrimitive.int)
+        assertEquals(60, monitor.getValue("framesPerSecond").jsonPrimitive.int)
+        assertEquals(100, monitor.getValue("dpi").jsonPrimitive.int)
+    }
+
+    @Test
+    fun otherAndroidTvFourKClaimKeepsAndroidPlatformAllocation() {
+        val sessionRequestData = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = StreamSettings(resolution = "3840x2160", fps = 60, codec = VideoCodec.H265),
+            streamingBaseUrl = "https://np-sth-04.cloudmatchbeta.nvidiagrid.net",
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+            isAndroidTv = true,
+            useDesktopNativeTvIdentity = false,
+        ).getValue("sessionRequestData").jsonObject
+
+        assertEquals("android", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(false, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun hdrClaimAlsoRequiresDesktopAllocationAt1080p() {
+        val settings = StreamSettings(
+            resolution = "1920x1080",
+            fps = 60,
+            codec = VideoCodec.H265,
+            colorQuality = ColorQuality.TenBit420,
+            hdrEnabled = true,
+        )
+
+        assertTrue(settings.requiresNativeDesktopCloudMatchMode())
+
+        val sessionRequestData = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = settings,
+            appLaunchMode = GfnAppLaunchMode.GAMEPAD_FRIENDLY,
+        ).getValue("sessionRequestData").jsonObject
+
+        assertEquals("windows", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(true, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(100, sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject.getValue("dpi").jsonPrimitive.int)
+    }
+
+    @Test
+    fun highPerformanceTouchClaimUsesNativeAndroidMonitorIdentity() {
+        val body = buildMinimalClaimRequestBody(
+            appId = "123",
+            deviceId = "device",
+            settings = StreamSettings(resolution = "2560x1440", fps = 120),
+            appLaunchMode = GfnAppLaunchMode.TOUCH_FRIENDLY,
+        )
+        val sessionRequestData = body.getValue("sessionRequestData").jsonObject
+
+        assertEquals("android", sessionRequestData.getValue("clientPlatformName").jsonPrimitive.content)
+        assertEquals(false, sessionRequestData.getValue("enablePersistingInGameSettings").jsonPrimitive.boolean)
+        assertEquals(100, sessionRequestData.getValue("clientRequestMonitorSettings").jsonArray.single().jsonObject.getValue("dpi").jsonPrimitive.int)
+    }
+
+}

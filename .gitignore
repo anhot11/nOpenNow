@@ -1,0 +1,31 @@
+# Directories kept for local reference only
+VpsBrowser/
+android-native/
+
+# Android / Gradle
+.gradle/
+build/
+*/build/
+app/build/
+android/app/build/
+android/.gradle/
+*.apk
+*.aab
+*.ap_
+local.properties
+.idea/
+*.iml
+.cxx/
+android/app/.cxx/
+
+# Rust / Cargo
+target/
+android/nvst/target/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
