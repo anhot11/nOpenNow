@@ -9,6 +9,7 @@ build/
 app/build/
 android/app/build/
 android/.gradle/
+dist/
 *.apk
 *.aab
 *.ap_
