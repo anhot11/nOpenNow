@@ -163,7 +163,7 @@ internal fun LoginScreen(state: OpenNowUiState, viewModel: OpenNowViewModel) {
                 )
                 Spacer(Modifier.height(if (compactForPhonePairing) 8.dp else 20.dp))
                 Text(
-                    "OpenNOW",
+                    stringResource(R.string.app_name),
                     color = TextPrimary,
                     style = if (compactForPhonePairing) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,

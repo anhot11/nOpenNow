@@ -1324,7 +1324,7 @@ internal fun shimmerBandStartX(progress: Float, containerWidth: Float, bandWidth
 internal fun OpenNowMark(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(R.drawable.opennow_logo_mark),
-        contentDescription = "OpenNOW",
+        contentDescription = "new OpenNow",
         modifier = modifier
             .width(size * 1.85f)
             .height(size),
@@ -1367,7 +1367,7 @@ internal fun OpenNowAppIcon(
     }
     Image(
         painter = painterResource(R.drawable.opennow_icon),
-        contentDescription = "OpenNOW",
+        contentDescription = "new OpenNow",
         modifier = Modifier
             .size(size)
             .then(motionModifier),
