@@ -46,6 +46,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -163,6 +166,7 @@ fun OpenNowInAppBrowserDialog(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     // Download Manager state
     val downloads = remember {
@@ -371,84 +375,201 @@ fun OpenNowInAppBrowserDialog(
                         }
                     }
 
-                    // Screen Rotation Toggle (Vertical <-> Horizontal)
-                    IconButton(
-                        onClick = {
-                            isPortrait = !isPortrait
-                            activity?.requestedOrientation = if (isPortrait) {
-                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            } else {
-                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    // 3-Dots Menu Button (Vertical orientation, Recommendations like YouTube, Data Savings, etc.)
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_more_vert),
+                                contentDescription = "Menú de opciones",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier
+                                .background(Color(0xFF1E1E2E))
+                                .border(1.dp, Color(0xFF313244), RoundedCornerShape(12.dp))
+                                .width(280.dp)
+                        ) {
+                            // 1. Orientación de Pantalla (Vertical / Horizontal)
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = if (isPortrait) "Rotar a Horizontal" else "Rotar a Vertical",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = if (isPortrait) "Modo actual: Vertical" else "Modo actual: Horizontal",
+                                            color = Color(0xFFA6ADC8),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_screen_rotation),
+                                        contentDescription = null,
+                                        tint = if (isPortrait) Color(0xFF89B4FA) else Color(0xFFA6E3A1),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    isPortrait = !isPortrait
+                                    activity?.requestedOrientation = if (isPortrait) {
+                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                    }
+                                }
+                            )
+
+                            HorizontalDivider(color = Color(0xFF313244), modifier = Modifier.padding(vertical = 4.dp))
+
+                            // 2. Estado de Ahorro GFN (2 Mbps)
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = if (lowQualityActive) "Ahorro GFN Activo (2 Mbps)" else "Calidad GFN Normal",
+                                            color = Color(0xFFA6E3A1),
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = "Ahorra batería y datos mientras navegas",
+                                            color = Color(0xFFA6ADC8),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Surface(
+                                        modifier = Modifier.size(10.dp),
+                                        shape = CircleShape,
+                                        color = if (lowQualityActive) Color(0xFFA6E3A1) else Color(0xFF89B4FA)
+                                    ) {}
+                                },
+                                onClick = {
+                                    showMenu = false
+                                }
+                            )
+
+                            HorizontalDivider(color = Color(0xFF313244), modifier = Modifier.padding(vertical = 4.dp))
+
+                            // 3. Recomendaciones (YouTube, Google, Steam, etc.)
+                            Text(
+                                text = "RECOMENDACIONES",
+                                color = Color(0xFF89B4FA),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+
+                            val recommendations = listOf(
+                                Triple("YouTube", "https://www.youtube.com", "Videos y música"),
+                                Triple("Google", "https://www.google.com", "Búsqueda web"),
+                                Triple("GitHub", "https://github.com/anhot11/nOpenNow", "Repositorio nOpenNow"),
+                                Triple("Steam", "https://store.steampowered.com", "Tienda de juegos"),
+                                Triple("Descargar BAT", "https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat", "Lanzador Windows"),
+                            )
+
+                            recommendations.forEach { (title, url, subtitle) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = title,
+                                                color = Color(0xFFCDD6F4),
+                                                fontWeight = FontWeight.Medium,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Text(
+                                                text = subtitle,
+                                                color = Color(0xFF6C7086),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        activeTab = "web"
+                                        inputUrl = url
+                                        currentUrl = url
+                                        webViewRef?.loadUrl(url)
+                                    }
+                                )
                             }
-                        },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_screen_rotation),
-                            contentDescription = if (isPortrait) "Rotar a Horizontal" else "Rotar a Vertical",
-                            tint = if (isPortrait) Color(0xFF89B4FA) else Color(0xFFA6E3A1),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
 
-                // 2. Info Bar (GFN 2 Mbps Mode & Quick Shortcuts)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF11111B))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(6.dp),
-                            shape = RoundedCornerShape(3.dp),
-                            color = Color(0xFFA6E3A1),
-                        ) {}
-                        Text(
-                            text = if (lowQualityActive) "GFN Ahorro: 2 Mbps" else "GFN Calidad Normal",
-                            color = Color(0xFFA6E3A1),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
+                            HorizontalDivider(color = Color(0xFF313244), modifier = Modifier.padding(vertical = 4.dp))
 
-                    // Tab selector pills
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (activeTab == "web") Color(0xFF89B4FA) else Color(0xFF313244),
-                            modifier = Modifier.clickable { activeTab = "web" }
-                        ) {
-                            Text(
-                                text = "Navegador",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activeTab == "web") Color.Black else Color.White,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            // 4. Administrador de Descargas
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = if (activeTab == "downloads") "Volver a la Web" else "Descargas (${downloads.size})",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(
+                                            if (activeTab == "downloads") R.drawable.ic_public else R.drawable.ic_download
+                                        ),
+                                        contentDescription = null,
+                                        tint = Color(0xFF89B4FA),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    activeTab = if (activeTab == "downloads") "web" else "downloads"
+                                }
                             )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (activeTab == "downloads") Color(0xFF89B4FA) else Color(0xFF313244),
-                            modifier = Modifier.clickable { activeTab = "downloads" }
-                        ) {
-                            Text(
-                                text = "Descargas (${downloads.size})",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activeTab == "downloads") Color.Black else Color.White,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+
+                            // 5. Copiar enlace actual
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Copiar enlace actual",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_save),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    cm?.setPrimaryClip(ClipData.newPlainText("URL", currentUrl))
+                                    Toast.makeText(context, "Enlace copiado", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
                     }
                 }
 
-                // 3. Progress Bar (during web loading)
+                // 2. Progress Bar (during web loading)
                 if (activeTab == "web" && isLoading) {
                     LinearProgressIndicator(
                         progress = { progress },
@@ -460,42 +581,8 @@ fun OpenNowInAppBrowserDialog(
                     )
                 }
 
-                // 4. Content Area: Web Browser vs Download Manager
+                // 3. Content Area: Web Browser vs Download Manager
                 if (activeTab == "web") {
-                    // Fast Web Shortcuts Row
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF181825))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val shortcuts = listOf(
-                            "Google" to "https://www.google.com",
-                            "YouTube" to "https://www.youtube.com",
-                            "GitHub" to "https://github.com/anhot11/nOpenNow",
-                            "Steam" to "https://store.steampowered.com",
-                            "Descargar BAT" to "https://github.com/anhot11/nOpenNow/releases/latest/download/nOpenNow-Browser.bat",
-                        )
-                        items(shortcuts) { (title, url) ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF313244),
-                                modifier = Modifier.clickable {
-                                    inputUrl = url
-                                    currentUrl = url
-                                    webViewRef?.loadUrl(url)
-                                }
-                            ) {
-                                Text(
-                                    text = title,
-                                    color = Color(0xFFCDD6F4),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
 
                     // Full-Screen WebView
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
