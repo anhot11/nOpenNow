@@ -86,6 +86,7 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/outputs/apk/release/update.json
             tools/windows/nOpenNow-Browser.bat
+            tools/windows/transmitter.ps1
           name: nOpenNow Release ${{ github.ref_name }}
           draft: false
           prerelease: false

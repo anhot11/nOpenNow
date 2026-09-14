@@ -105,24 +105,29 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import android.content.ClipData
+import android.content.ClipboardManager
 import com.opencloudgaming.opennow.browser.BookmarkItem
 import com.opencloudgaming.opennow.browser.BrowserColors
 import com.opencloudgaming.opennow.browser.BrowserSecurityManager
 import com.opencloudgaming.opennow.browser.HistoryItem
 import com.opencloudgaming.opennow.browser.IncognitoManager
-import com.opencloudgaming.opennow.browser.SshTunnelManager
-import com.opencloudgaming.opennow.browser.VpsProfile
+import com.opencloudgaming.opennow.browser.PcTunnelProxyServer
 import com.opencloudgaming.opennow.browser.VpsProxyController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.InetAddress
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.net.URI
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "OpenNowInAppBrowser"
 
@@ -203,16 +208,18 @@ fun OpenNowInAppBrowserDialog(
     // Privacy & Incognito (Pure RAM)
     var isIncognito by rememberSaveable { mutableStateOf(false) }
 
-    // VPS SSH & SOCKS5 Tunnel state
-    var savedVpsProfile by remember { mutableStateOf(securityManager.getProfile()) }
-    var isVpsConnected by remember { mutableStateOf(SshTunnelManager.isSocksProxyActive()) }
-    var isConnectingVps by remember { mutableStateOf(false) }
-    var vpsLatencyMs by remember { mutableStateOf<Long?>(null) }
-    var vpsStatusText by remember { mutableStateOf(if (SshTunnelManager.isSocksProxyActive()) "Conectado" else "Desconectado") }
+    // PC WebSocket Tunnel & Dual-Mode Proxy Engine
+    val pairCode = remember { securityManager.getPairCode() }
+    var activeTunnelUrl by remember { mutableStateOf(securityManager.getPcTunnelUrl()) }
+    var isPcTunnelConnected by remember { mutableStateOf(!activeTunnelUrl.isNullOrBlank()) }
+    var pcTunnelStatusText by remember {
+        mutableStateOf(if (!activeTunnelUrl.isNullOrBlank()) "🟢 Conectado (GeForce NOW)" else "📱 Modo Celular Directo")
+    }
+    var proxyServerInstance by remember { mutableStateOf<PcTunnelProxyServer?>(null) }
 
     // Dialogs & Menus
     var showOptionsMenu by remember { mutableStateOf(false) }
-    var showVpsSettingsDialog by remember { mutableStateOf(false) }
+    var showPcTunnelDialog by remember { mutableStateOf(false) }
     var showDownloadsDialog by remember { mutableStateOf(false) }
     var showBookmarksDialog by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
@@ -220,53 +227,62 @@ fun OpenNowInAppBrowserDialog(
     // Downloads list
     val downloadList = remember { mutableStateListOf<InAppDownloadItem>() }
 
-    // Helper: connect or reconnect to VPS
-    fun connectToVps(profile: VpsProfile) {
-        coroutineScope.launch {
-            isConnectingVps = true
-            vpsStatusText = "Conectando a VPS..."
-            val result = SshTunnelManager.startSocksProxy(profile)
-            result.onSuccess { port ->
-                VpsProxyController.applySocksProxy(port) { success ->
-                    isConnectingVps = false
-                    if (success) {
-                        isVpsConnected = true
-                        vpsStatusText = "🟢 Conectado (${profile.getCleanHost()})"
-                        Toast.makeText(context, "🟢 Túnel VPS SOCKS5 Activo", Toast.LENGTH_SHORT).show()
-                        webViewInstance?.reload()
+    fun switchTunnel(newUrl: String?) {
+        val clean = newUrl?.trim()?.ifBlank { null }
+        activeTunnelUrl = clean
+        securityManager.setPcTunnelUrl(clean)
+        proxyServerInstance?.tunnelWssUrl = clean
+        if (clean != null) {
+            isPcTunnelConnected = true
+            pcTunnelStatusText = "🟢 Conectado (GeForce NOW)"
+            Toast.makeText(context, "🟢 Túnel PC GeForce NOW Activo", Toast.LENGTH_SHORT).show()
+        } else {
+            isPcTunnelConnected = false
+            pcTunnelStatusText = "📱 Modo Celular Directo"
+            Toast.makeText(context, "📱 Modo Celular Directo (0ms lag)", Toast.LENGTH_SHORT).show()
+        }
+        webViewInstance?.reload()
+    }
 
-                        // Measure quick latency
-                        coroutineScope.launch(Dispatchers.IO) {
-                            try {
-                                val t0 = System.currentTimeMillis()
-                                val addr = InetAddress.getByName(profile.getCleanHost())
-                                val t1 = System.currentTimeMillis()
-                                vpsLatencyMs = (t1 - t0).coerceAtLeast(1)
-                            } catch (_: Exception) {
-                                vpsLatencyMs = 45L
-                            }
-                        }
-                    } else {
-                        isVpsConnected = false
-                        vpsStatusText = "Error al aplicar proxy"
+    // Initialize local Dual-Mode proxy server on ephemeral port (0) and hook into WebView
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val server = PcTunnelProxyServer(port = 0, tunnelWssUrl = activeTunnelUrl)
+            server.start()
+            proxyServerInstance = server
+            withContext(Dispatchers.Main) {
+                VpsProxyController.applySocksProxy(server.boundPort) { success ->
+                    if (success) {
+                        Log.d(TAG, "Local dual-mode proxy hooked to WebView on port ${server.boundPort}")
                     }
                 }
-            }.onFailure { err ->
-                isConnectingVps = false
-                isVpsConnected = false
-                vpsStatusText = "Error SSH: ${err.message?.take(35)}"
-                Toast.makeText(context, "Error conectando a VPS: ${err.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    // Auto-connect to saved VPS profile if exists
-    LaunchedEffect(Unit) {
-        val prof = securityManager.getProfile()
-        if (prof != null && prof.host.isNotBlank() && prof.sshPassword.isNotBlank()) {
-            savedVpsProfile = prof
-            if (!SshTunnelManager.isSocksProxyActive()) {
-                connectToVps(prof)
+    // Background auto-discovery for PC transmitter on ntfy.sh
+    LaunchedEffect(pairCode, isPcTunnelConnected) {
+        if (!isPcTunnelConnected) {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .build()
+            val req = Request.Builder()
+                .url("https://ntfy.sh/opennow_tunnel_$pairCode/raw?poll=1")
+                .build()
+
+            while (!isPcTunnelConnected && isActive) {
+                try {
+                    val body = withContext(Dispatchers.IO) {
+                        val resp = client.newCall(req).execute()
+                        resp.body?.string()?.trim() ?: ""
+                    }
+                    if (body.contains("trycloudflare.com")) {
+                        switchTunnel(body)
+                        break
+                    }
+                } catch (_: Exception) {}
+                delay(3000)
             }
         }
     }
@@ -286,7 +302,7 @@ fun OpenNowInAppBrowserDialog(
         }
     }
 
-    // Orientation management
+    // Orientation management & cleanup
     DisposableEffect(isPortrait) {
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = if (isPortrait) {
@@ -296,7 +312,8 @@ fun OpenNowInAppBrowserDialog(
         }
         onDispose {
             activity?.requestedOrientation = originalOrientation
-            // Clean up proxy when exiting dialog
+            // Clean up proxy and server when exiting browser
+            proxyServerInstance?.stop()
             VpsProxyController.clearProxy()
             if (isIncognito) {
                 IncognitoManager.purgeIncognitoData(webViewInstance)
@@ -308,7 +325,7 @@ fun OpenNowInAppBrowserDialog(
     BackHandler {
         when {
             showDownloadsDialog -> showDownloadsDialog = false
-            showVpsSettingsDialog -> showVpsSettingsDialog = false
+            showPcTunnelDialog -> showPcTunnelDialog = false
             showBookmarksDialog -> showBookmarksDialog = false
             showHistoryDialog -> showHistoryDialog = false
             isEditingOmnibar -> isEditingOmnibar = false
@@ -331,11 +348,7 @@ fun OpenNowInAppBrowserDialog(
         }
     }
 
-    val shieldColor = when {
-        isConnectingVps -> BrowserColors.StatusYellow
-        isVpsConnected -> BrowserColors.StatusGreen
-        else -> BrowserColors.StatusRed
-    }
+    val shieldColor = if (isPcTunnelConnected) BrowserColors.StatusGreen else Color(0xFF89B4FA)
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -678,7 +691,7 @@ fun OpenNowInAppBrowserDialog(
                                     Spacer(modifier = Modifier.width(4.dp))
                                 }
 
-                                // VPS Shield Badge
+                                // PC Tunnel Shield Badge
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
@@ -688,7 +701,7 @@ fun OpenNowInAppBrowserDialog(
                                         )
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            showVpsSettingsDialog = true
+                                            showPcTunnelDialog = true
                                         }
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
@@ -700,7 +713,7 @@ fun OpenNowInAppBrowserDialog(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (isVpsConnected) "VPS" else "Directo",
+                                        text = if (isPcTunnelConnected) "PC GFN" else "Directo",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color(0xFF89B4FA)
@@ -821,18 +834,18 @@ fun OpenNowInAppBrowserDialog(
                                         }
                                     )
 
-                                    // 3. VPS Settings
+                                    // 3. PC Tunnel (GeForce NOW)
                                     DropdownMenuItem(
                                         text = {
                                             Column {
                                                 Text(
-                                                    if (isVpsConnected) "🛡️ Servidor VPS (Conectado)" else "🛡️ Configurar Servidor VPS",
+                                                    if (isPcTunnelConnected) "🖥️ Túnel PC GFN (Conectado)" else "🖥️ Túnel de PC (GeForce NOW)",
                                                     fontWeight = FontWeight.SemiBold,
                                                     fontSize = 13.sp,
-                                                    color = if (isVpsConnected) Color(0xFFA6E3A1) else Color.White
+                                                    color = if (isPcTunnelConnected) Color(0xFFA6E3A1) else Color.White
                                                 )
                                                 Text(
-                                                    if (isVpsConnected) "IP de salida: ${savedVpsProfile?.getCleanHost() ?: "VPS"}" else "Túnel SOCKS5 cifrado directo",
+                                                    if (isPcTunnelConnected) "IP NVIDIA: ${activeTunnelUrl ?: "PC"}" else "Enrutar tráfico por la PC de GeForce NOW",
                                                     fontSize = 10.sp,
                                                     color = Color(0xFFA6ADC8)
                                                 )
@@ -843,7 +856,7 @@ fun OpenNowInAppBrowserDialog(
                                         },
                                         onClick = {
                                             showOptionsMenu = false
-                                            showVpsSettingsDialog = true
+                                            showPcTunnelDialog = true
                                         }
                                     )
 
@@ -941,120 +954,191 @@ fun OpenNowInAppBrowserDialog(
     }
 
     // ==========================================
-    // DIALOG: VPS Settings & SSH Configuration
+    // DIALOG: PC WebSocket Tunnel (GeForce NOW)
     // ==========================================
-    if (showVpsSettingsDialog) {
-        var vpsHostInput by remember { mutableStateOf(savedVpsProfile?.host ?: "") }
-        var vpsPortInput by remember { mutableStateOf((savedVpsProfile?.sshPort ?: 22).toString()) }
-        var vpsUserInput by remember { mutableStateOf(savedVpsProfile?.sshUser ?: "root") }
-        var vpsPasswordInput by remember { mutableStateOf(savedVpsProfile?.sshPassword ?: "") }
+    if (showPcTunnelDialog) {
+        var manualUrlInput by remember { mutableStateOf(activeTunnelUrl ?: "") }
+        val pcCommand = "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"\$env:OPENNOW_CODE='$pairCode'; irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/transmitter.ps1 | iex\""
 
         AlertDialog(
-            onDismissRequest = { showVpsSettingsDialog = false },
+            onDismissRequest = { showPcTunnelDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF89B4FA))
-                    Text("🛡️ Configuración de VPS (SOCKS5)", style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = shieldColor)
+                    Text("🖥️ Túnel de PC (GeForce NOW)", style = MaterialTheme.typography.titleMedium)
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Estado: $vpsStatusText",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = shieldColor
-                    )
-                    Text(
-                        text = "Conexión directa SSH Celular ➔ VPS. El 100% del tráfico web se cifra y se muestra la IP de tu VPS con 0ms de lag en pantalla.",
-                        fontSize = 11.sp,
-                        color = Color(0xFFBAC2DE)
-                    )
-
-                    OutlinedTextField(
-                        value = vpsHostInput,
-                        onValueChange = { vpsHostInput = it },
-                        label = { Text("IP o Dominio de tu VPS") },
-                        placeholder = { Text("ej: 185.220.101.5") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = vpsUserInput,
-                            onValueChange = { vpsUserInput = it },
-                            label = { Text("Usuario") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1.5f)
-                        )
-                        OutlinedTextField(
-                            value = vpsPortInput,
-                            onValueChange = { vpsPortInput = it },
-                            label = { Text("Puerto SSH") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = vpsPasswordInput,
-                        onValueChange = { vpsPasswordInput = it },
-                        label = { Text("Contraseña SSH") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val cleanHost = vpsHostInput.trim()
-                        val portNum = vpsPortInput.trim().toIntOrNull() ?: 22
-                        val user = vpsUserInput.trim().ifBlank { "root" }
-                        val pass = vpsPasswordInput.trim()
-
-                        if (cleanHost.isNotBlank()) {
-                            val newProfile = VpsProfile(
-                                host = cleanHost,
-                                sshPort = portNum,
-                                sshUser = user,
-                                sshPassword = pass
-                            )
-                            securityManager.saveProfile(newProfile)
-                            savedVpsProfile = newProfile
-                            connectToVps(newProfile)
-                            showVpsSettingsDialog = false
-                        } else {
-                            Toast.makeText(context, "Ingresa una IP o Host válido", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Guardar y Conectar")
+                    if (isPcTunnelConnected) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF2E3440),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(BrowserColors.StatusGreen))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("🟢 Túnel Activo con PC GeForce NOW", fontWeight = FontWeight.Bold, color = Color(0xFFA6E3A1), fontSize = 13.sp)
+                                }
+                                Text("IP de Salida: NVIDIA Datacenter", fontSize = 11.sp, color = Color(0xFFBAC2DE))
+                                Text("URL: ${activeTunnelUrl ?: "trycloudflare.com"}", fontSize = 10.sp, color = Color(0xFFA6ADC8))
+                                Text("La PC transmite el tráfico en segundo plano sin ventanas ni molestar tu juego.", fontSize = 10.sp, color = Color(0xFFA6ADC8))
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                showPcTunnelDialog = false
+                                currentUrl = "https://cualesmiip.com"
+                                urlInputText = currentUrl
+                                webViewInstance?.loadUrl(currentUrl)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                        ) {
+                            Text("🌐 Comprobar IP de Salida (cualesmiip.com)", fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                switchTunnel(null)
+                                showPcTunnelDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("📱 Desconectar (Volver a Modo Celular Directo)", fontSize = 12.sp, color = Color(0xFFF38BA8))
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF1E1E2E),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF89B4FA)))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("📱 Modo Celular Directo Activo", fontWeight = FontWeight.Bold, color = Color(0xFF89B4FA), fontSize = 12.sp)
+                                }
+                                Text("Estás navegando directamente con 0ms de lag. Para salir con la IP de la PC (GeForce NOW), inicia el transmisor:", fontSize = 11.sp, color = Color(0xFFCDD6F4))
+                            }
+                        }
+
+                        Text(
+                            text = "1. Pega y ejecuta esto en la PC (PowerShell o CMD):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF181825)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = pcCommand,
+                                fontSize = 10.sp,
+                                color = Color(0xFFA6E3A1),
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    val clip = ClipData.newPlainText("OpenNow PC Command", pcCommand)
+                                    clipboard?.setPrimaryClip(clip)
+                                    Toast.makeText(context, "📋 ¡Comando copiado al portapapeles!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                            ) {
+                                Text("📋 Copiar", fontSize = 11.sp)
+                            }
+
+                            if (onRunCommandOnPc != null) {
+                                Button(
+                                    onClick = {
+                                        onRunCommandOnPc(pcCommand)
+                                        Toast.makeText(context, "🚀 Comando enviado a la PC", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1.3f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA6E3A1), contentColor = Color.Black)
+                                ) {
+                                    Text("🚀 Enviar a PC", fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "2. Presiona Enter en la PC. El transmisor se empareja solo con el código: $pairCode",
+                            fontSize = 11.sp,
+                            color = Color(0xFFBAC2DE)
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFF89B4FA))
+                            Text("Esperando señal del transmisor...", fontSize = 11.sp, color = Color(0xFFA6ADC8))
+                        }
+
+                        HorizontalDivider(color = Color(0xFF313244))
+
+                        Text("O conecta ingresando la URL del túnel manualmente:", fontSize = 11.sp, color = Color(0xFFA6ADC8))
+
+                        OutlinedTextField(
+                            value = manualUrlInput,
+                            onValueChange = { manualUrlInput = it },
+                            placeholder = { Text("https://xxxx.trycloudflare.com", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (manualUrlInput.isNotBlank()) {
+                                        switchTunnel(manualUrlInput.trim())
+                                        showPcTunnelDialog = false
+                                    } else {
+                                        Toast.makeText(context, "Ingresa una URL de túnel válida", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                            ) {
+                                Text("Conectar URL", fontSize = 11.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    switchTunnel(null)
+                                    showPcTunnelDialog = false
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("📱 Celular Directo", fontSize = 11.sp)
+                            }
+                        }
+                    }
                 }
             },
+            confirmButton = {},
             dismissButton = {
-                if (isVpsConnected) {
-                    OutlinedButton(
-                        onClick = {
-                            SshTunnelManager.stopTunnel()
-                            VpsProxyController.clearProxy()
-                            isVpsConnected = false
-                            vpsStatusText = "Desconectado"
-                            showVpsSettingsDialog = false
-                            Toast.makeText(context, "Túnel VPS Desconectado", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Text("Desconectar")
-                    }
-                } else {
-                    TextButton(onClick = { showVpsSettingsDialog = false }) {
-                        Text("Cerrar")
-                    }
+                TextButton(onClick = { showPcTunnelDialog = false }) {
+                    Text("Cerrar")
                 }
             }
         )

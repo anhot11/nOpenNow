@@ -43,27 +43,43 @@ class BrowserSecurityManager(context: Context) {
     private val gson = Gson()
 
     companion object {
-        private const val KEY_PROFILE = "vps_profile_data"
+        private const val KEY_PC_TUNNEL_URL = "pc_tunnel_url"
+        private const val KEY_PREFER_PC_TUNNEL = "prefer_pc_tunnel"
+        private const val KEY_PAIR_CODE = "pc_pair_code"
         private const val KEY_BOOKMARKS = "browser_bookmarks"
         private const val KEY_HISTORY = "browser_history"
     }
 
-    fun getProfile(): VpsProfile? {
-        val json = securePrefs.getString(KEY_PROFILE, null) ?: return null
-        return try {
-            gson.fromJson(json, VpsProfile::class.java)
-        } catch (e: Exception) {
-            null
+    fun getPcTunnelUrl(): String? {
+        return securePrefs.getString(KEY_PC_TUNNEL_URL, null)
+    }
+
+    fun setPcTunnelUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            securePrefs.edit().remove(KEY_PC_TUNNEL_URL).apply()
+        } else {
+            securePrefs.edit().putString(KEY_PC_TUNNEL_URL, url.trim()).apply()
         }
     }
 
-    fun saveProfile(profile: VpsProfile) {
-        val json = gson.toJson(profile)
-        securePrefs.edit().putString(KEY_PROFILE, json).apply()
+    fun getPreferPcTunnel(): Boolean {
+        return securePrefs.getBoolean(KEY_PREFER_PC_TUNNEL, true)
     }
 
-    fun clearProfile() {
-        securePrefs.edit().remove(KEY_PROFILE).apply()
+    fun setPreferPcTunnel(prefer: Boolean) {
+        securePrefs.edit().putBoolean(KEY_PREFER_PC_TUNNEL, prefer).apply()
+    }
+
+    fun getPairCode(): String {
+        val existing = securePrefs.getString(KEY_PAIR_CODE, null)
+        if (!existing.isNullOrBlank()) return existing
+
+        val allowedChars = ('A'..'Z') + ('0'..'9')
+        val newCode = (1..6)
+            .map { allowedChars.random() }
+            .joinToString("")
+        securePrefs.edit().putString(KEY_PAIR_CODE, newCode).apply()
+        return newCode
     }
 
     fun getBookmarks(): MutableList<BookmarkItem> {
