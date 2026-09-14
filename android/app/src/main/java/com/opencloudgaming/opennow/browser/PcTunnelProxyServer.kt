@@ -302,7 +302,7 @@ class PcTunnelProxyServer(
             while (isRunning && !socket.isClosed) {
                 val count = inStream.read(buf)
                 if (count < 0) break
-                ws.send(ByteString.of(buf, 0, count))
+                ws.send(buf.toByteString(0, count))
             }
         } catch (e: Exception) {
             Log.d(TAG, "WebSocket tunnel to $targetHost:$targetPort ended: ${e.message}")
