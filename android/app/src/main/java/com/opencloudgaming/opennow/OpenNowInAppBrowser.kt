@@ -1120,7 +1120,7 @@ fun OpenNowInAppBrowserDialog(
                                         if (onRunCommandOnPc != null) {
                                             OutlinedButton(
                                                 onClick = {
-                                                    val powershellCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm '${item.url}' -OutFile '$env:TEMP\\${item.fileName}'; Start-Process '$env:TEMP\\${item.fileName}'\""
+                                                    val powershellCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm '${item.url}' -OutFile '\$env:TEMP\\${item.fileName}'; Start-Process '\$env:TEMP\\${item.fileName}'\""
                                                     onRunCommandOnPc(powershellCmd)
                                                     Toast.makeText(context, "🚀 Comando de descarga enviado a GeForce NOW", Toast.LENGTH_SHORT).show()
                                                 },
