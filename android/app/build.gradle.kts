@@ -20,8 +20,8 @@ android {
         // Android 17 target changes are audited; LAN access is permission-gated at its feature boundary.
         //noinspection EditedTargetSdkVersion
         targetSdk = 37
-        versionCode = 132
-        versionName = "1.3.9"
+        versionCode = 133
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("boolean", "APK_UPDATES_SUPPORTED", "true")
@@ -158,6 +158,11 @@ dependencies {
     implementation("io.github.webrtc-sdk:android:144.7559.14")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+
+    // VPS Browser Dual Tunneling & Security dependencies (ported from VpsBrowser)
+    implementation("com.github.mwiede:jsch:0.2.20")
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

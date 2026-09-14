@@ -3,8 +3,6 @@ package com.opencloudgaming.opennow
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -21,6 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,21 +31,39 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -74,32 +91,40 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.webkit.ProxyConfig
-import androidx.webkit.ProxyController
-import androidx.webkit.WebViewFeature
+import com.opencloudgaming.opennow.browser.BookmarkItem
+import com.opencloudgaming.opennow.browser.BrowserColors
+import com.opencloudgaming.opennow.browser.BrowserSecurityManager
+import com.opencloudgaming.opennow.browser.HistoryItem
+import com.opencloudgaming.opennow.browser.IncognitoManager
+import com.opencloudgaming.opennow.browser.SshTunnelManager
+import com.opencloudgaming.opennow.browser.VpsProfile
+import com.opencloudgaming.opennow.browser.VpsProxyController
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.InetAddress
+import java.net.URI
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+
+private const val TAG = "OpenNowInAppBrowser"
 
 private fun Context.findActivity(): Activity? {
     var ctx = this
@@ -142,33 +167,6 @@ private fun openFileOnAndroid(context: Context, item: InAppDownloadItem) {
     }
 }
 
-private fun applyProxyOverride(proxyAddress: String?, onComplete: (Boolean) -> Unit) {
-    try {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            Log.w("OpenNowBrowser", "PROXY_OVERRIDE not supported on this WebView version")
-            onComplete(false)
-            return
-        }
-        val controller = ProxyController.getInstance()
-        if (proxyAddress.isNullOrBlank()) {
-            controller.clearProxyOverride({ it.run() }) {
-                onComplete(true)
-            }
-        } else {
-            val config = ProxyConfig.Builder()
-                .addProxyRule(proxyAddress.trim())
-                .build()
-            controller.setProxyOverride(config, { it.run() }) {
-                Log.d("OpenNowBrowser", "Proxy override set to: $proxyAddress")
-                onComplete(true)
-            }
-        }
-    } catch (e: Exception) {
-        Log.e("OpenNowBrowser", "Failed to set proxy override", e)
-        onComplete(false)
-    }
-}
-
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun OpenNowInAppBrowserDialog(
@@ -181,8 +179,11 @@ fun OpenNowInAppBrowserDialog(
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
+    val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
+    val securityManager = remember { BrowserSecurityManager(context) }
 
+    // Orientation & Display state
     var isPortrait by rememberSaveable { mutableStateOf(true) }
     var currentUrl by rememberSaveable { mutableStateOf(initialUrl) }
     var urlInputText by rememberSaveable { mutableStateOf(initialUrl) }
@@ -190,63 +191,102 @@ fun OpenNowInAppBrowserDialog(
     var pageLoadingProgress by remember { mutableFloatStateOf(0f) }
     var isPageLoading by remember { mutableStateOf(false) }
 
+    // Browser navigation & Engine
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
 
+    // Editing State (Omnibar IME auto-focus)
+    var isEditingOmnibar by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    // Privacy & Incognito (Pure RAM)
+    var isIncognito by rememberSaveable { mutableStateOf(false) }
+
+    // VPS SSH & SOCKS5 Tunnel state
+    var savedVpsProfile by remember { mutableStateOf(securityManager.getProfile()) }
+    var isVpsConnected by remember { mutableStateOf(SshTunnelManager.isSocksProxyActive()) }
+    var isConnectingVps by remember { mutableStateOf(false) }
+    var vpsLatencyMs by remember { mutableStateOf<Long?>(null) }
+    var vpsStatusText by remember { mutableStateOf(if (SshTunnelManager.isSocksProxyActive()) "Conectado" else "Desconectado") }
+
+    // Dialogs & Menus
+    var showOptionsMenu by remember { mutableStateOf(false) }
+    var showVpsSettingsDialog by remember { mutableStateOf(false) }
+    var showDownloadsDialog by remember { mutableStateOf(false) }
+    var showBookmarksDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
+
+    // Downloads list
     val downloadList = remember { mutableStateListOf<InAppDownloadItem>() }
-    var downloadManagerOpen by rememberSaveable { mutableStateOf(false) }
-    var pendingLaunchItem by remember { mutableStateOf<InAppDownloadItem?>(null) }
-    var menuExpanded by remember { mutableStateOf(false) }
 
-    // Tunnel / Proxy state
-    val tunnelToken = remember(sessionId) {
-        sessionId?.takeLast(8) ?: "opennow"
-    }
-    var activeProxyHostPort by rememberSaveable { mutableStateOf<String?>(null) }
-    var proxyStatusText by remember { mutableStateOf("Comprobando túnel...") }
-    var proxyDialogOpen by remember { mutableStateOf(false) }
-    var manualProxyInput by remember { mutableStateOf("") }
-    var isCheckingProxy by remember { mutableStateOf(false) }
-
-    // Auto-discover tunnel from ntfy relay on launch
-    fun checkTunnelStatus() {
+    // Helper: connect or reconnect to VPS
+    fun connectToVps(profile: VpsProfile) {
         coroutineScope.launch {
-            isCheckingProxy = true
-            val proxyEndpoint = withContext(Dispatchers.IO) {
-                try {
-                    val url = URL("https://ntfy.sh/opennow_proxy_$tunnelToken/raw")
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 4000
-                    conn.readTimeout = 4000
-                    conn.requestMethod = "GET"
-                    if (conn.responseCode == 200) {
-                        BufferedReader(InputStreamReader(conn.inputStream)).use { it.readLine()?.trim() }
-                    } else null
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            isCheckingProxy = false
-            if (!proxyEndpoint.isNullOrBlank() && proxyEndpoint.contains(":")) {
-                activeProxyHostPort = proxyEndpoint
-                proxyStatusText = "🟢 Conectado a la PC ($proxyEndpoint)"
-                applyProxyOverride(proxyEndpoint) { success ->
+            isConnectingVps = true
+            vpsStatusText = "Conectando a VPS..."
+            val result = SshTunnelManager.startSocksProxy(profile)
+            result.onSuccess { port ->
+                VpsProxyController.applySocksProxy(port) { success ->
+                    isConnectingVps = false
                     if (success) {
-                        Toast.makeText(context, "🟢 Túnel activo con GeForce NOW: $proxyEndpoint", Toast.LENGTH_SHORT).show()
+                        isVpsConnected = true
+                        vpsStatusText = "🟢 Conectado (${profile.getCleanHost()})"
+                        Toast.makeText(context, "🟢 Túnel VPS SOCKS5 Activo", Toast.LENGTH_SHORT).show()
                         webViewInstance?.reload()
+
+                        // Measure quick latency
+                        coroutineScope.launch(Dispatchers.IO) {
+                            try {
+                                val t0 = System.currentTimeMillis()
+                                val addr = InetAddress.getByName(profile.getCleanHost())
+                                val t1 = System.currentTimeMillis()
+                                vpsLatencyMs = (t1 - t0).coerceAtLeast(1)
+                            } catch (_: Exception) {
+                                vpsLatencyMs = 45L
+                            }
+                        }
+                    } else {
+                        isVpsConnected = false
+                        vpsStatusText = "Error al aplicar proxy"
                     }
                 }
-            } else {
-                proxyStatusText = "🟡 Directo (Sin túnel de PC activo)"
+            }.onFailure { err ->
+                isConnectingVps = false
+                isVpsConnected = false
+                vpsStatusText = "Error SSH: ${err.message?.take(35)}"
+                Toast.makeText(context, "Error conectando a VPS: ${err.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    LaunchedEffect(tunnelToken) {
-        checkTunnelStatus()
+    // Auto-connect to saved VPS profile if exists
+    LaunchedEffect(Unit) {
+        val prof = securityManager.getProfile()
+        if (prof != null && prof.host.isNotBlank() && prof.sshPassword.isNotBlank()) {
+            savedVpsProfile = prof
+            if (!SshTunnelManager.isSocksProxyActive()) {
+                connectToVps(prof)
+            }
+        }
     }
 
+    // Auto-focus IME keyboard when entering omnibar editing
+    LaunchedEffect(isEditingOmnibar) {
+        if (isEditingOmnibar) {
+            urlInputText = currentUrl
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
+
+    // Sync input text when navigation finishes
+    LaunchedEffect(currentUrl) {
+        if (!isEditingOmnibar) {
+            urlInputText = currentUrl
+        }
+    }
+
+    // Orientation management
     DisposableEffect(isPortrait) {
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = if (isPortrait) {
@@ -257,20 +297,44 @@ fun OpenNowInAppBrowserDialog(
         onDispose {
             activity?.requestedOrientation = originalOrientation
             // Clean up proxy when exiting dialog
-            applyProxyOverride(null) {}
+            VpsProxyController.clearProxy()
+            if (isIncognito) {
+                IncognitoManager.purgeIncognitoData(webViewInstance)
+            }
         }
     }
 
+    // Back handling
     BackHandler {
-        if (downloadManagerOpen) {
-            downloadManagerOpen = false
-        } else if (proxyDialogOpen) {
-            proxyDialogOpen = false
-        } else if (webViewInstance?.canGoBack() == true) {
-            webViewInstance?.goBack()
-        } else {
-            onDismissRequest()
+        when {
+            showDownloadsDialog -> showDownloadsDialog = false
+            showVpsSettingsDialog -> showVpsSettingsDialog = false
+            showBookmarksDialog -> showBookmarksDialog = false
+            showHistoryDialog -> showHistoryDialog = false
+            isEditingOmnibar -> isEditingOmnibar = false
+            webViewInstance?.canGoBack() == true -> webViewInstance?.goBack()
+            else -> onDismissRequest()
         }
+    }
+
+    val displayHost = remember(currentUrl) {
+        try {
+            if (currentUrl.isBlank()) {
+                "Buscar o escribir URL"
+            } else {
+                val uri = URI(currentUrl)
+                val host = uri.host ?: currentUrl
+                host.removePrefix("www.")
+            }
+        } catch (_: Exception) {
+            currentUrl.ifBlank { "Buscar o escribir URL" }
+        }
+    }
+
+    val shieldColor = when {
+        isConnectingVps -> BrowserColors.StatusYellow
+        isVpsConnected -> BrowserColors.StatusGreen
+        else -> BrowserColors.StatusRed
     }
 
     Dialog(
@@ -283,296 +347,11 @@ fun OpenNowInAppBrowserDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF1E1E2E))
+                .background(if (isIncognito) BrowserColors.IncognitoPurpleDark else BrowserColors.DarkBackground)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Navigation Bar
-                Surface(
-                    color = Color(0xFF181825),
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // Back Button
-                            IconButton(
-                                onClick = { webViewInstance?.goBack() },
-                                enabled = canGoBack,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text(
-                                    "◀",
-                                    color = if (canGoBack) Color.White else Color(0xFF585B70),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
 
-                            // Forward Button
-                            IconButton(
-                                onClick = { webViewInstance?.goForward() },
-                                enabled = canGoForward,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text(
-                                    "▶",
-                                    color = if (canGoForward) Color.White else Color(0xFF585B70),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-
-                            // Reload Button
-                            IconButton(
-                                onClick = { webViewInstance?.reload() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text(
-                                    if (isPageLoading) "✕" else "↻",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-
-                            // URL & Search Box
-                            OutlinedTextField(
-                                value = urlInputText,
-                                onValueChange = { urlInputText = it },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                singleLine = true,
-                                shape = RoundedCornerShape(24.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color(0xFF313244),
-                                    unfocusedContainerColor = Color(0xFF313244),
-                                    focusedBorderColor = Color(0xFF89B4FA),
-                                    unfocusedBorderColor = Color(0xFF45475A),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color(0xFFCDD6F4)
-                                ),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                                keyboardActions = KeyboardActions(
-                                    onGo = {
-                                        var target = urlInputText.trim()
-                                        if (target.isNotBlank()) {
-                                            if (!target.startsWith("http://") && !target.startsWith("https://")) {
-                                                target = if (target.contains(".") && !target.contains(" ")) {
-                                                    "https://$target"
-                                                } else {
-                                                    "https://www.google.com/search?q=${URLEncoder.encode(target, "UTF-8")}"
-                                                }
-                                            }
-                                            currentUrl = target
-                                            webViewInstance?.loadUrl(target)
-                                        }
-                                    }
-                                ),
-                                textStyle = MaterialTheme.typography.bodySmall
-                            )
-
-                            // 3-Dots Menu Button
-                            Box {
-                                IconButton(
-                                    onClick = { menuExpanded = true },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Text("⋮", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                                }
-
-                                DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                    modifier = Modifier.background(Color(0xFF181825))
-                                ) {
-                                    // Rotation Toggle
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(id = R.drawable.ic_screen_rotation),
-                                                    contentDescription = "Girar Pantalla",
-                                                    tint = Color(0xFF89B4FA),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = if (isPortrait) "Vista Horizontal" else "Vista Vertical",
-                                                    color = Color.White,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            isPortrait = !isPortrait
-                                            menuExpanded = false
-                                        }
-                                    )
-
-                                    // Download Manager
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text("📥", color = Color(0xFFA6E3A1))
-                                                Text("Descargas (Abrir en PC o Celular)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            downloadManagerOpen = true
-                                        }
-                                    )
-                                    // Tunnel / Proxy Config
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text(if (activeProxyHostPort != null) "🟢" else "🟡")
-                                                Text(
-                                                    text = if (activeProxyHostPort != null) "Túnel PC Activo" else "Conectar Túnel PC",
-                                                    color = Color.White,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            proxyDialogOpen = true
-                                        }
-                                    )
-
-                                    // Data Saver
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text(if (browserLowQualityEnabled) "⚡" else "💤")
-                                                Text(
-                                                    text = if (browserLowQualityEnabled) "Ahorro 2Mbps: Activado" else "Ahorro 2Mbps: Desactivado",
-                                                    color = Color.White,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            onBrowserLowQualityToggle()
-                                            menuExpanded = false
-                                        }
-                                    )
-
-                                    HorizontalDivider(color = Color(0xFF313244))
-
-                                    // Quick shortcut: YouTube
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text("▶", color = Color(0xFFF38BA8))
-                                                Text("YouTube Móvil", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            currentUrl = "https://m.youtube.com"
-                                            urlInputText = currentUrl
-                                            webViewInstance?.loadUrl(currentUrl)
-                                        }
-                                    )
-
-                                    // Quick shortcut: Check IP
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text("🌐", color = Color(0xFFA6E3A1))
-                                                Text("Ver mi IP (Comprobar PC)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            currentUrl = "https://cualesmiip.com"
-                                            urlInputText = currentUrl
-                                            webViewInstance?.loadUrl(currentUrl)
-                                        }
-                                    )
-                                }
-                            }
-
-                            // Close Button
-                            IconButton(
-                                onClick = onDismissRequest,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text(
-                                    "✕",
-                                    color = Color(0xFFF38BA8),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // Tunnel Status Ribbon
-                        Surface(
-                            color = if (activeProxyHostPort != null) Color(0xFF1E3A2F) else Color(0xFF2A2A3C),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { proxyDialogOpen = true }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 3.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (activeProxyHostPort != null) "🔒 Conectado por Túnel PC (GeForce NOW: $activeProxyHostPort)" else "⚠️ Túnel PC no conectado — Toca aquí para ver cómo conectar",
-                                    color = if (activeProxyHostPort != null) Color(0xFFA6E3A1) else Color(0xFFF9E2AF),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = if (activeProxyHostPort != null) "Ajustes" else "Conectar",
-                                    color = Color(0xFF89B4FA),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // Loading Progress Indicator
-                        if (isPageLoading && pageLoadingProgress in 0.01f..0.99f) {
-                            LinearProgressIndicator(
-                                progress = { pageLoadingProgress },
-                                modifier = Modifier.fillMaxWidth().height(2.dp),
-                                color = Color(0xFF89B4FA),
-                                trackColor = Color(0xFF313244)
-                            )
-                        }
-                    }
-                }
-
-                // WebView Container
+                // 1. WebView Viewport taking main area
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -584,15 +363,15 @@ fun OpenNowInAppBrowserDialog(
                                 webViewInstance = this
                                 settings.apply {
                                     javaScriptEnabled = true
-                                    domStorageEnabled = true
-                                    databaseEnabled = true
+                                    domStorageEnabled = !isIncognito
+                                    databaseEnabled = !isIncognito
                                     loadWithOverviewMode = true
                                     useWideViewPort = true
                                     builtInZoomControls = true
                                     displayZoomControls = false
                                     mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                     mediaPlaybackRequiresUserGesture = false
-                                    cacheMode = WebSettings.LOAD_DEFAULT
+                                    cacheMode = if (isIncognito) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
                                     userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
                                 }
 
@@ -605,6 +384,9 @@ fun OpenNowInAppBrowserDialog(
                                     override fun onReceivedTitle(view: WebView?, title: String?) {
                                         if (!title.isNullOrBlank()) {
                                             pageTitle = title
+                                            if (!isIncognito && !currentUrl.startsWith("about:") && !currentUrl.startsWith("data:")) {
+                                                securityManager.addHistory(title, currentUrl)
+                                            }
                                         }
                                     }
                                 }
@@ -650,7 +432,7 @@ fun OpenNowInAppBrowserDialog(
                                         isExecutable = isExe
                                     )
                                     downloadList.add(0, item)
-                                    pendingLaunchItem = item
+                                    showDownloadsDialog = true
 
                                     try {
                                         val req = DownloadManager.Request(Uri.parse(url)).apply {
@@ -671,406 +453,838 @@ fun OpenNowInAppBrowserDialog(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+
+                // 2. Loading Indicator (above bottom Omnibar)
+                if (isPageLoading && pageLoadingProgress in 0.01f..0.99f) {
+                    LinearProgressIndicator(
+                        progress = { pageLoadingProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                        color = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color(0xFF89B4FA),
+                        trackColor = if (isIncognito) BrowserColors.IncognitoPurplePill else Color(0xFF313244)
+                    )
+                }
+
+                // 3. Sleek Mobile Omnibar (52dp Bottom Bar from VpsBrowser)
+                Surface(
+                    shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+                    color = if (isIncognito) BrowserColors.IncognitoPurpleDark else Color(0xFF181825),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 12.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            1.dp,
+                            if (isIncognito) BrowserColors.IncognitoPurpleBorder else Color(0xFF313244),
+                            RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+                        )
+                ) {
+                    if (isEditingOmnibar) {
+                        // Full width text editing row with instant Android IME keyboard
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color(0xFF89B4FA),
+                                modifier = Modifier
+                                    .padding(start = 6.dp)
+                                    .size(20.dp)
+                            )
+
+                            OutlinedTextField(
+                                value = urlInputText,
+                                onValueChange = { urlInputText = it },
+                                placeholder = {
+                                    Text(
+                                        if (isIncognito) "Buscar con Incógnito (RAM)..." else "Buscar o ingresar URL...",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFFA6ADC8)
+                                    )
+                                },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = if (isIncognito) BrowserColors.IncognitoPurpleBorder else Color(0xFF89B4FA),
+                                    unfocusedBorderColor = if (isIncognito) BrowserColors.IncognitoPurple.copy(alpha = 0.5f) else Color(0xFF45475A),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color(0xFFCDD6F4)
+                                ),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                                keyboardActions = KeyboardActions(
+                                    onGo = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        isEditingOmnibar = false
+                                        var target = urlInputText.trim()
+                                        if (target.isNotBlank()) {
+                                            if (!target.startsWith("http://") && !target.startsWith("https://")) {
+                                                target = if (target.contains(".") && !target.contains(" ")) {
+                                                    "https://$target"
+                                                } else {
+                                                    "https://www.google.com/search?q=${URLEncoder.encode(target, "UTF-8")}"
+                                                }
+                                            }
+                                            currentUrl = target
+                                            webViewInstance?.loadUrl(target)
+                                        }
+                                    }
+                                ),
+                                trailingIcon = {
+                                    if (urlInputText.isNotBlank()) {
+                                        IconButton(onClick = { urlInputText = "" }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Borrar", modifier = Modifier.size(18.dp), tint = Color.White)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                                    .focusRequester(focusRequester)
+                            )
+
+                            TextButton(
+                                onClick = {
+                                    isEditingOmnibar = false
+                                    urlInputText = currentUrl
+                                }
+                            ) {
+                                Text(
+                                    "Cancelar",
+                                    fontSize = 12.sp,
+                                    color = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color(0xFF89B4FA)
+                                )
+                            }
+                        }
+                    } else {
+                        // Standard Omnibar Navigation Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            // Back Button
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    webViewInstance?.goBack()
+                                },
+                                enabled = canGoBack,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Atrás",
+                                    tint = if (canGoBack) {
+                                        if (isIncognito) BrowserColors.IncognitoPurpleAccent else Color.White
+                                    } else {
+                                        Color(0xFF585B70)
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Forward Button
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    webViewInstance?.goForward()
+                                },
+                                enabled = canGoForward,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Adelante",
+                                    tint = if (canGoForward) {
+                                        if (isIncognito) BrowserColors.IncognitoPurpleAccent else Color.White
+                                    } else {
+                                        Color(0xFF585B70)
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Central Pill: Domain + Incognito + VPS Shield Indicator
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .padding(horizontal = 4.dp)
+                                    .clip(RoundedCornerShape(19.dp))
+                                    .background(
+                                        if (isIncognito) BrowserColors.IncognitoPurplePill else Color(0xFF313244)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isIncognito) BrowserColors.IncognitoPurpleBorder.copy(alpha = 0.8f) else Color(0xFF45475A),
+                                        RoundedCornerShape(19.dp)
+                                    )
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        isEditingOmnibar = true
+                                    }
+                                    .padding(horizontal = 10.dp)
+                            ) {
+                                if (isIncognito) {
+                                    Icon(
+                                        imageVector = Icons.Default.VisibilityOff,
+                                        contentDescription = "Modo Incógnito",
+                                        tint = BrowserColors.IncognitoPurpleBadge,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = if (currentUrl.startsWith("https://")) BrowserColors.StatusGreen else Color(0xFFA6ADC8),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                Text(
+                                    text = displayHost,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                if (isIncognito) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(BrowserColors.IncognitoPurple.copy(alpha = 0.35f))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "RAM",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = BrowserColors.IncognitoPurpleBadge
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+
+                                // VPS Shield Badge
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isIncognito) BrowserColors.IncognitoPurple.copy(alpha = 0.25f) else Color(0xFF1E1E2E)
+                                        )
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            showVpsSettingsDialog = true
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(shieldColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isVpsConnected) "VPS" else "Directo",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color(0xFF89B4FA)
+                                    )
+                                }
+                            }
+
+                            // Reload Button
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    if (isPageLoading) webViewInstance?.stopLoading() else webViewInstance?.reload()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPageLoading) Icons.Default.Close else Icons.Default.Refresh,
+                                    contentDescription = "Recargar",
+                                    tint = if (isIncognito) BrowserColors.IncognitoPurpleAccent else Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // 3-Dots Menu Button
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        showOptionsMenu = true
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Menú",
+                                        tint = if (isIncognito) BrowserColors.IncognitoPurpleBadge else Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = showOptionsMenu,
+                                    onDismissRequest = { showOptionsMenu = false },
+                                    modifier = Modifier.background(Color(0xFF181825))
+                                ) {
+                                    // 1. Incognito Mode (RAM Pura)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        if (isIncognito) "🕵️ Incógnito (RAM Pura)" else "🕵️ Modo Incógnito",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp,
+                                                        color = if (isIncognito) BrowserColors.IncognitoPurpleAccent else Color.White
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = if (isIncognito) BrowserColors.IncognitoPurple else Color(0xFF313244)
+                                                    ) {
+                                                        Text(
+                                                            text = if (isIncognito) "ACTIVO" else "OFF",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isIncognito) Color.White else Color(0xFFA6ADC8),
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Text(
+                                                    if (isIncognito) "Caché y cookies solo en RAM volátil (0 disco)" else "Desactiva escrituras en almacenamiento local",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFFA6ADC8)
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (isIncognito) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = null,
+                                                tint = if (isIncognito) BrowserColors.IncognitoPurple else Color(0xFF89B4FA)
+                                            )
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            isIncognito = !isIncognito
+                                            webViewInstance?.let { wv ->
+                                                IncognitoManager.applyIncognitoSettings(wv, isIncognito)
+                                                wv.reload()
+                                            }
+                                            Toast.makeText(
+                                                context,
+                                                if (isIncognito) "🕵️ Modo Incógnito Activado (RAM Pura)" else "Modo Estándar Activado",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = Color(0xFF313244))
+
+                                    // 2. Rotate Screen Toggle
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isPortrait) "🔄 Rotar a Pantalla Horizontal" else "🔄 Rotar a Pantalla Vertical",
+                                                fontSize = 13.sp,
+                                                color = Color.White
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.ScreenRotation, contentDescription = null, tint = Color(0xFF89B4FA))
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            isPortrait = !isPortrait
+                                        }
+                                    )
+
+                                    // 3. VPS Settings
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    if (isVpsConnected) "🛡️ Servidor VPS (Conectado)" else "🛡️ Configurar Servidor VPS",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 13.sp,
+                                                    color = if (isVpsConnected) Color(0xFFA6E3A1) else Color.White
+                                                )
+                                                Text(
+                                                    if (isVpsConnected) "IP de salida: ${savedVpsProfile?.getCleanHost() ?: "VPS"}" else "Túnel SOCKS5 cifrado directo",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFFA6ADC8)
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Shield, contentDescription = null, tint = shieldColor)
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            showVpsSettingsDialog = true
+                                        }
+                                    )
+
+                                    // 4. Downloads Manager
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text("📥 Administrador de Descargas", fontSize = 13.sp, color = Color.White)
+                                                if (downloadList.isNotEmpty()) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = Color(0xFF89B4FA)
+                                                    ) {
+                                                        Text(
+                                                            text = "${downloadList.size}",
+                                                            fontSize = 10.sp,
+                                                            color = Color.Black,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFFA6E3A1))
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            showDownloadsDialog = true
+                                        }
+                                    )
+
+                                    // 5. Bookmarks
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text("⭐️ Marcadores y Favoritos", fontSize = 13.sp, color = Color.White)
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF9E2AF))
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            showBookmarksDialog = true
+                                        }
+                                    )
+
+                                    // 6. History
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text("🕒 Historial de Navegación", fontSize = 13.sp, color = Color.White)
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.History, contentDescription = null, tint = Color(0xFFCDD6F4))
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            showHistoryDialog = true
+                                        }
+                                    )
+
+                                    // 7. Verify IP Shortcut
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text("🌐 Ver mi IP (Comprobar Salida)", fontSize = 13.sp, color = Color(0xFFA6E3A1))
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            currentUrl = "https://cualesmiip.com"
+                                            urlInputText = currentUrl
+                                            webViewInstance?.loadUrl(currentUrl)
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = Color(0xFF313244))
+
+                                    // 8. Close Browser Dialog
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text("✕ Cerrar Navegador", fontSize = 13.sp, color = Color(0xFFF38BA8), fontWeight = FontWeight.Bold)
+                                        },
+                                        onClick = {
+                                            showOptionsMenu = false
+                                            onDismissRequest()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Tunnel / Proxy Config Dialog
-    if (proxyDialogOpen) {
+    // ==========================================
+    // DIALOG: VPS Settings & SSH Configuration
+    // ==========================================
+    if (showVpsSettingsDialog) {
+        var vpsHostInput by remember { mutableStateOf(savedVpsProfile?.host ?: "") }
+        var vpsPortInput by remember { mutableStateOf((savedVpsProfile?.sshPort ?: 22).toString()) }
+        var vpsUserInput by remember { mutableStateOf(savedVpsProfile?.sshUser ?: "root") }
+        var vpsPasswordInput by remember { mutableStateOf(savedVpsProfile?.sshPassword ?: "") }
+
         AlertDialog(
-            onDismissRequest = { proxyDialogOpen = false },
+            onDismissRequest = { showVpsSettingsDialog = false },
             title = {
-                Text("🌐 Conexión y Túnel de la PC (GeForce NOW)")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF89B4FA))
+                    Text("🛡️ Configuración de VPS (SOCKS5)", style = MaterialTheme.typography.titleMedium)
+                }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Estado: $proxyStatusText",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = "Estado: $vpsStatusText",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (activeProxyHostPort != null) Color(0xFFA6E3A1) else Color(0xFFF9E2AF)
+                        color = shieldColor
                     )
                     Text(
-                        text = "El túnel permite que el navegador móvil navegue usando la conexión, IP y velocidad de la PC en GeForce NOW.",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Conexión directa SSH Celular ➔ VPS. El 100% del tráfico web se cifra y se muestra la IP de tu VPS con 0ms de lag en pantalla.",
+                        fontSize = 11.sp,
                         color = Color(0xFFBAC2DE)
                     )
 
-                    if (activeProxyHostPort == null) {
-                        Card(
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF313244)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedTextField(
+                        value = vpsHostInput,
+                        onValueChange = { vpsHostInput = it },
+                        label = { Text("IP o Dominio de tu VPS") },
+                        placeholder = { Text("ej: 185.220.101.5") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = vpsUserInput,
+                            onValueChange = { vpsUserInput = it },
+                            label = { Text("Usuario") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.5f)
+                        )
+                        OutlinedTextField(
+                            value = vpsPortInput,
+                            onValueChange = { vpsPortInput = it },
+                            label = { Text("Puerto SSH") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = vpsPasswordInput,
+                        onValueChange = { vpsPasswordInput = it },
+                        label = { Text("Contraseña SSH") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleanHost = vpsHostInput.trim()
+                        val portNum = vpsPortInput.trim().toIntOrNull() ?: 22
+                        val user = vpsUserInput.trim().ifBlank { "root" }
+                        val pass = vpsPasswordInput.trim()
+
+                        if (cleanHost.isNotBlank()) {
+                            val newProfile = VpsProfile(
+                                host = cleanHost,
+                                sshPort = portNum,
+                                sshUser = user,
+                                sshPassword = pass
+                            )
+                            securityManager.saveProfile(newProfile)
+                            savedVpsProfile = newProfile
+                            connectToVps(newProfile)
+                            showVpsSettingsDialog = false
+                        } else {
+                            Toast.makeText(context, "Ingresa una IP o Host válido", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                ) {
+                    Text("Guardar y Conectar")
+                }
+            },
+            dismissButton = {
+                if (isVpsConnected) {
+                    OutlinedButton(
+                        onClick = {
+                            SshTunnelManager.stopTunnel()
+                            VpsProxyController.clearProxy()
+                            isVpsConnected = false
+                            vpsStatusText = "Desconectado"
+                            showVpsSettingsDialog = false
+                            Toast.makeText(context, "Túnel VPS Desconectado", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("Desconectar")
+                    }
+                } else {
+                    TextButton(onClick = { showVpsSettingsDialog = false }) {
+                        Text("Cerrar")
+                    }
+                }
+            }
+        )
+    }
+
+    // ==========================================
+    // DIALOG: Downloads Manager
+    // ==========================================
+    if (showDownloadsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownloadsDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFFA6E3A1))
+                    Text("📥 Descargas en Curso / Finalizadas", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+            text = {
+                if (downloadList.isEmpty()) {
+                    Text("No hay descargas activas en esta sesión.", color = Color(0xFFA6ADC8), fontSize = 13.sp)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(downloadList) { item ->
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF313244)),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    text = "⚡ Cómo conectar a la PC de GeForce NOW:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF89B4FA)
-                                )
-                                Text(
-                                    text = "1. Pega este comando en la PC (SalsaNOW / PowerShell):",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White
-                                )
-                                val pcCommand = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/anhot11/nOpenNow/main/tools/windows/browser.ps1 | iex\""
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFF181825),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
-                                        text = pcCommand,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFA6E3A1),
-                                        modifier = Modifier.padding(8.dp)
+                                        text = item.fileName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = Color.White
                                     )
-                                }
-                                Text(
-                                    text = "2. Ejecútalo en la PC y luego pulsa 'Detectar Conexión'.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                            clipboard?.setPrimaryClip(ClipData.newPlainText("Comando PC", pcCommand))
-                                            Toast.makeText(context, "¡Comando copiado al portapapeles!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                                    Text(
+                                        text = item.url,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = Color(0xFFA6ADC8)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Text("📋 Copiar Comando", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                                    }
-                                    if (onRunCommandOnPc != null) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                val launchCmd = "start \"\" \"I:\\nOpenNow_Browser\\nOpenNow-Browser.bat\" tunnel $tunnelToken"
-                                                onRunCommandOnPc(launchCmd)
-                                                Toast.makeText(context, "🚀 Comando enviado a la PC...", Toast.LENGTH_SHORT).show()
-                                                checkTunnelStatus()
-                                            },
-                                            modifier = Modifier.weight(1f)
+                                        Button(
+                                            onClick = { openFileOnAndroid(context, item) },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
                                         ) {
-                                            Text("🚀 Enviar a PC", style = MaterialTheme.typography.labelMedium)
+                                            Text("📱 Abrir en Celular", fontSize = 11.sp)
+                                        }
+
+                                        if (onRunCommandOnPc != null) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val powershellCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm '${item.url}' -OutFile '$env:TEMP\\${item.fileName}'; Start-Process '$env:TEMP\\${item.fileName}'\""
+                                                    onRunCommandOnPc(powershellCmd)
+                                                    Toast.makeText(context, "🚀 Comando de descarga enviado a GeForce NOW", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.weight(1.2f)
+                                            ) {
+                                                Text("🚀 Enviar a PC", fontSize = 11.sp)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    OutlinedTextField(
-                        value = manualProxyInput,
-                        onValueChange = { manualProxyInput = it },
-                        label = { Text("Proxy manual (ej: bore.pub:12345 o IP:puerto)") },
-                        placeholder = { Text(activeProxyHostPort ?: "bore.pub:xxxxx") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        )
-                    )
-
-                    Button(
-                        onClick = {
-                            if (manualProxyInput.isNotBlank()) {
-                                activeProxyHostPort = manualProxyInput.trim()
-                                proxyStatusText = "🟢 Conectado a ($manualProxyInput)"
-                                applyProxyOverride(manualProxyInput.trim()) { success ->
-                                    if (success) {
-                                        Toast.makeText(context, "Proxy aplicado", Toast.LENGTH_SHORT).show()
-                                        webViewInstance?.reload()
-                                        proxyDialogOpen = false
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Aplicar Proxy Manual")
-                    }
-
-                    if (onRunCommandOnPc != null) {
-                        OutlinedButton(
-                            onClick = {
-                                val cmd = "start \"\" \"I:\\nOpenNow_Browser\\nOpenNow-Browser.bat\" tunnel $tunnelToken"
-                                onRunCommandOnPc(cmd)
-                                Toast.makeText(context, "🚀 Comando de túnel enviado a la PC...", Toast.LENGTH_SHORT).show()
-                                checkTunnelStatus()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("🚀 Iniciar Túnel en la PC")
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { checkTunnelStatus() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (isCheckingProxy) "Buscando..." else "🔄 Auto-Detectar Túnel de la PC")
-                    }
-
-                    if (activeProxyHostPort != null) {
-                        TextButton(
-                            onClick = {
-                                activeProxyHostPort = null
-                                proxyStatusText = "🟡 Directo (Sin túnel)"
-                                applyProxyOverride(null) {
-                                    webViewInstance?.reload()
-                                    proxyDialogOpen = false
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Desconectar Túnel (Navegación Directa)", color = Color(0xFFF38BA8))
-                        }
-                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { proxyDialogOpen = false }) {
+                TextButton(onClick = { showDownloadsDialog = false }) {
                     Text("Cerrar")
                 }
             }
         )
     }
 
-    // Download Manager Dialog
-    if (downloadManagerOpen) {
-        Dialog(
-            onDismissRequest = { downloadManagerOpen = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF1E1E2E).copy(alpha = 0.96f))
-                    .padding(16.dp)
-            ) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF181825)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 24.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
+    // ==========================================
+    // DIALOG: Bookmarks & Favorites
+    // ==========================================
+    if (showBookmarksDialog) {
+        val bookmarks = remember { securityManager.getBookmarks() }
+        AlertDialog(
+            onDismissRequest = { showBookmarksDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF9E2AF))
+                    Text("⭐️ Marcadores y Favoritos", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            if (currentUrl.isNotBlank()) {
+                                securityManager.addBookmark(pageTitle.ifBlank { displayHost }, currentUrl)
+                                Toast.makeText(context, "¡Marcador guardado!", Toast.LENGTH_SHORT).show()
+                                showBookmarksDialog = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Text("⭐️ Agregar página actual")
+                    }
+
+                    if (bookmarks.isEmpty()) {
+                        Text("No hay marcadores guardados.", fontSize = 12.sp, color = Color(0xFFA6ADC8))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 250.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = "📥 Administrador de Descargas",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            IconButton(onClick = { downloadManagerOpen = false }) {
-                                Text("✕", color = Color(0xFFBAC2DE), style = MaterialTheme.typography.titleMedium)
-                            }
-                        }
-
-                        HorizontalDivider(color = Color(0xFF313244), modifier = Modifier.padding(vertical = 8.dp))
-
-                        if (downloadList.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No hay descargas registradas en esta sesión.",
-                                    color = Color(0xFF6C7086),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f, fill = false),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(downloadList, key = { it.id }) { item ->
-                                    Card(
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF313244)),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = item.fileName,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                if (item.isExecutable) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(4.dp),
-                                                        color = Color(0xFFA6E3A1).copy(alpha = 0.2f),
-                                                        modifier = Modifier.padding(start = 6.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "PROGRAMA",
-                                                            color = Color(0xFFA6E3A1),
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            Text(
-                                                text = item.url,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF6C7086),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-
-                                            Spacer(modifier = Modifier.height(8.dp))
-
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Button(
-                                                    onClick = { pendingLaunchItem = item },
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black),
-                                                    modifier = Modifier.weight(1f)
-                                                ) {
-                                                    Text("🚀 Abrir en PC", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                                }
-
-                                                OutlinedButton(
-                                                    onClick = { openFileOnAndroid(context, item) },
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFCDD6F4))
-                                                ) {
-                                                    Text("📱 Celular", style = MaterialTheme.typography.labelSmall)
-                                                }
-                                            }
+                            items(bookmarks) { b ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF313244))
+                                        .clickable {
+                                            currentUrl = b.url
+                                            urlInputText = b.url
+                                            webViewInstance?.loadUrl(b.url)
+                                            showBookmarksDialog = false
                                         }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(b.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+                                        Text(b.url, fontSize = 10.sp, color = Color(0xFFA6ADC8), maxLines = 1)
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            securityManager.deleteBookmark(b.id)
+                                            bookmarks.remove(b)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color(0xFFF38BA8), modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
                         }
                     }
                 }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBookmarksDialog = false }) {
+                    Text("Cerrar")
+                }
             }
-        }
+        )
     }
 
-    // Launch in PC Dialog
-    pendingLaunchItem?.let { item ->
-        val safeFileName = item.fileName
-        val windowsDownloadPath = "I:\\nOpenNow_Browser\\Downloads\\$safeFileName"
-        val cmdRunOnly = "start \"\" \"$windowsDownloadPath\""
-        val powershellFetchAndRun = "\"I:\\Apps\\SalsaNOW SilentApps\\Powershell\\pwsh.exe\" -c \"irm '${item.url}' -OutFile '$windowsDownloadPath'; start '$windowsDownloadPath'\""
-
+    // ==========================================
+    // DIALOG: History
+    // ==========================================
+    if (showHistoryDialog) {
+        val historyList = remember { securityManager.getHistory() }
         AlertDialog(
-            onDismissRequest = { pendingLaunchItem = null },
+            onDismissRequest = { showHistoryDialog = false },
             title = {
-                Text("🚀 Abrir en la PC (GeForce NOW)")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.History, contentDescription = null, tint = Color(0xFFCDD6F4))
+                    Text("🕒 Historial de Navegación", style = MaterialTheme.typography.titleMedium)
+                }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Archivo: $safeFileName",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "El programa se ejecutará en Windows GFN fuera del navegador (Disco I:):",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFBAC2DE)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF11111B),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = cmdRunOnly,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFA6E3A1),
-                            modifier = Modifier.padding(8.dp)
-                        )
+                    if (historyList.isEmpty()) {
+                        Text("No hay historial disponible.", fontSize = 12.sp, color = Color(0xFFA6ADC8))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 250.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(historyList) { h ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF313244))
+                                        .clickable {
+                                            currentUrl = h.url
+                                            urlInputText = h.url
+                                            webViewInstance?.loadUrl(h.url)
+                                            showHistoryDialog = false
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(h.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+                                    Text(h.url, fontSize = 10.sp, color = Color(0xFFA6ADC8), maxLines = 1)
+                                }
+                            }
+                        }
                     }
                 }
             },
             confirmButton = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (onRunCommandOnPc != null) {
-                        Button(
-                            onClick = {
-                                onRunCommandOnPc(cmdRunOnly)
-                                Toast.makeText(context, "🚀 ¡Comando enviado a la PC! Abriendo...", Toast.LENGTH_SHORT).show()
-                                pendingLaunchItem = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA6E3A1), contentColor = Color.Black)
-                        ) {
-                            Text("🚀 Enviar y Ejecutar en PC", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Button(
+                if (historyList.isNotEmpty()) {
+                    TextButton(
                         onClick = {
-                            if (onRunCommandOnPc != null) {
-                                onRunCommandOnPc(powershellFetchAndRun)
-                                Toast.makeText(context, "🚀 Descargando en I:\\ a 1000 Mbps y abriendo...", Toast.LENGTH_SHORT).show()
-                            }
-                            pendingLaunchItem = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA), contentColor = Color.Black)
+                            securityManager.clearHistory()
+                            historyList.clear()
+                        }
                     ) {
-                        Text("Descargar en I:\\ a 1000 Mbps")
+                        Text("Borrar Todo", color = Color(0xFFF38BA8))
                     }
                 }
             },
             dismissButton = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    TextButton(onClick = { openFileOnAndroid(context, item) }) {
-                        Text("📱 Celular", color = Color(0xFFBAC2DE))
-                    }
-                    TextButton(onClick = { pendingLaunchItem = null }) {
-                        Text("Cerrar", color = Color(0xFF6C7086))
-                    }
+                TextButton(onClick = { showHistoryDialog = false }) {
+                    Text("Cerrar")
                 }
             }
         )

@@ -33,96 +33,9 @@ Write-Host "[+] Directorio de descargas: $DownloadsDir" -ForegroundColor Green
     if (-not (Test-Path $_)) {
         New-Item -ItemType Directory -Path $_ -Force | Out-Null
     }
-# 1.1 Iniciar Túnel Proxy Inverso para la App Android de new OpenNow
-function Start-OpenNowProxyTunnel {
-    param([string]$Token = "opennow")
-    Write-Host "[*] Preparando Túnel Proxy Inverso para new OpenNow Android..." -ForegroundColor Cyan
-    
-    $BoreExe = Join-Path $WorkDir "bore.exe"
-    if (-not (Test-Path $BoreExe)) {
-        $BoreZip = Join-Path $DownloadsDir "bore.zip"
-        $BoreUrl = "https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip"
-        try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            & curl.exe -L -k --fail --connect-timeout 10 -o "$BoreZip" "$BoreUrl" 2>$null
-            if (Test-Path $BoreZip) {
-                Expand-Archive -Path $BoreZip -DestinationPath $WorkDir -Force -ErrorAction SilentlyContinue
-                Remove-Item -Path $BoreZip -Force -ErrorAction SilentlyContinue
-            }
-        } catch {}
-    }
-
-    $proxyScript = Join-Path $WorkDir "microproxy.ps1"
-    if (-not (Test-Path $proxyScript)) {
-        $proxyCode = @'
-$listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 8080)
-$listener.Start()
-while ($true) {
-    try {
-        $client = $listener.AcceptTcpClient()
-        [System.Threading.ThreadPool]::QueueUserWorkItem({
-            param($c)
-            try {
-                $cStream = $c.GetStream()
-                $reader = New-Object System.IO.StreamReader($cStream)
-                $firstLine = $reader.ReadLine()
-                if ($firstLine -match "^CONNECT ([^:]+):(\d+)") {
-                    $host = $matches[1]
-                    $port = [int]$matches[2]
-                    $remote = New-Object System.Net.Sockets.TcpClient($host, $port)
-                    $rStream = $remote.GetStream()
-                    $resp = [System.Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 Connection Established`r`n`r`n")
-                    $cStream.Write($resp, 0, $resp.Length)
-                    $t1 = [System.Threading.Tasks.Task]::Run({ try { $cStream.CopyTo($rStream) } catch {} })
-                    $t2 = [System.Threading.Tasks.Task]::Run({ try { $rStream.CopyTo($cStream) } catch {} })
-                    [System.Threading.Tasks.Task]::WaitAny(@($t1, $t2))
-                    $remote.Close()
-                }
-            } catch {} finally { $c.Close() }
-        }, $client) | Out-Null
-    } catch { Start-Sleep -Milliseconds 100 }
-}
-'@
-        Set-Content -Path $proxyScript -Value $proxyCode -Encoding ASCII -Force
-    }
-
-    $pwshPath = if (Test-Path "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe") { "I:\Apps\SalsaNOW SilentApps\Powershell\pwsh.exe" } elseif (Test-Path "I:\Apps\SalsaNOW\Powershell\pwsh.exe") { "I:\Apps\SalsaNOW\Powershell\pwsh.exe" } else { "powershell" }
-    Start-Process -FilePath $pwshPath -ArgumentList @("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $proxyScript) -ErrorAction SilentlyContinue
-
-    if (Test-Path $BoreExe) {
-        $logFile = Join-Path $WorkDir "tunnel.log"
-        Start-Process -FilePath $BoreExe -ArgumentList @("local", "8080", "--to", "bore.pub") -RedirectStandardOutput $logFile -RedirectStandardError $logFile -WindowStyle Hidden -ErrorAction SilentlyContinue
-        
-        for ($i = 0; $i -lt 15; $i++) {
-            Start-Sleep -Milliseconds 500
-            if (Test-Path $logFile) {
-                $logContent = Get-Content -Path $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "listening at bore\.pub:(\d+)") {
-                    $port = $matches[1]
-                    $endpoint = "bore.pub:$port"
-                    Write-Host "==========================================================" -ForegroundColor Green
-                    Write-Host "[✓] TÚNEL DE CONEXIÓN ACTIVO PARA NEW OPENNOW (ANDROID)" -ForegroundColor Green
-                    Write-Host "    Dirección de salida: $endpoint" -ForegroundColor Yellow
-                    Write-Host "    IP transmitida:      GeForce NOW (NVIDIA Datacenter)" -ForegroundColor Yellow
-                    Write-Host "==========================================================" -ForegroundColor Green
-                    try {
-                        & curl.exe -s -d "$endpoint" "https://ntfy.sh/opennow_proxy_$Token" 2>$null
-                    } catch {}
-                    break
-                }
-            }
-        }
-    }
 }
 
-$effectiveToken = if ($env:TUNNEL_TOKEN) { $env:TUNNEL_TOKEN } else { "opennow" }
-if ($env:TUNNEL_CMD -eq "tunnel") {
-    Start-OpenNowProxyTunnel -Token $effectiveToken
-    Write-Host "[*] Túnel en ejecución activa. Puedes usar el Navegador Integrado en la App Android." -ForegroundColor Cyan
-    while ($true) { Start-Sleep -Seconds 30 }
-} else {
-    Start-OpenNowProxyTunnel -Token $effectiveToken
-}
+Write-Host "[✓] Entorno de descargas y perfiles listo." -ForegroundColor Green
 
 # 2. Descargar o asegurar copia persistente y actualizada de nOpenNow-Browser.bat en Disco I:
 try {
